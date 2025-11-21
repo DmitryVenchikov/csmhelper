@@ -1,0 +1,67 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Timer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Meeting Timer</h1>
+
+        <!-- Настройки встречи -->
+        <div class="setup-section" id="setupSection">
+            <div class="form-group">
+                <label for="duration">Длительность встречи (минуты):</label>
+                <input type="number" id="duration" min="1" max="180" value="10">
+            </div>
+
+            <div class="form-group">
+                <label for="participants">Количество участников:</label>
+                <input type="number" id="participants" min="1" max="50" value="3">
+            </div>
+
+            <button id="startBtn" class="btn btn-primary">Начать встречу</button>
+        </div>
+
+        <!-- Таймер -->
+        <div class="timer-section" id="timerSection" style="display: none;">
+            <div class="participant-info">
+                Участник <span id="currentParticipant">1</span> из <span id="totalParticipants">3</span>
+            </div>
+
+            <div class="time-info">
+                Время на выступление: <span id="timePerParticipant">03:20</span>
+            </div>
+
+            <div class="timer-display">
+                <div id="timer">03:20</div>
+                <div class="progress-bar">
+                    <div id="progress" class="progress-fill"></div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button id="addTimeBtn" class="btn btn-secondary">+30 сек</button>
+                <button id="nextParticipantBtn" class="btn btn-warning">Следующий участник</button>
+                <button id="stopBtn" class="btn btn-danger">Завершить</button>
+            </div>
+
+            <div class="status-message" id="statusMessage"></div>
+
+            <div class="meeting-info">
+                <div>Общее время встречи: <span id="totalMeetingTime">10:00</span></div>
+                <div>Оставшееся время встречи: <span id="remainingMeetingTime">10:00</span></div>
+                <div>Осталось участников: <span id="remainingParticipants">3</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
