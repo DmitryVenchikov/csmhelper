@@ -60,6 +60,17 @@ namespace csmhelper.Controllers
             try
             {
                 var result = await _jiraService.CreateLinkedTasksAsync(model);
+
+                // Логируем результат для отладки
+                _logger.LogInformation($"Created {result.TasksCreated} tasks with {result.LinksCreated} links");
+                if (result.Tasks != null)
+                {
+                    foreach (var task in result.Tasks)
+                    {
+                        _logger.LogInformation($"Created task: {task.Key} - {task.Summary} - {task.Url}");
+                    }
+                }
+
                 return Json(result);
             }
             catch (Exception ex)

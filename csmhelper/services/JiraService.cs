@@ -135,10 +135,11 @@ namespace csmhelper.services
                     Key = issue.Key,
                     Summary = issue.Fields.Summary,
                     Url = $"{_jiraBaseUrl}/browse/{issue.Key}",
-                    Type = issue.Fields.IssueType?.Name ?? "Task" // ИСПРАВЛЕНО: добавлено .Name
+                    Type = issue.Fields.IssueType?.Name ?? "Task"
                 }).ToList();
 
                 response.Message = $"Успешно создано {createdIssues.Count} задач с {linksCreated} блокирующими связями";
+
             }
             catch (Exception ex)
             {

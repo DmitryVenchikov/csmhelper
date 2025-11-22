@@ -59,6 +59,79 @@
         margin-bottom: 20px;
         border-radius: 4px;
     }
+
+    .task-list-container {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    padding: 10px;
+}
+
+.created-task-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    margin-bottom: 8px;
+    background: #f8f9fa;
+    border-radius: 5px;
+    border-left: 4px solid #28a745;
+    transition: all 0.3s ease;
+}
+
+.created-task-item:hover {
+    background: #e9ecef;
+    transform: translateX(5px);
+}
+
+.task-type-badge {
+    font-size: 0.7em;
+    padding: 3px 8px;
+    margin-right: 10px;
+    border-radius: 12px;
+}
+
+.task-info {
+    flex: 1;
+}
+
+.task-key {
+    font-weight: bold;
+    color: #1976d2;
+    text-decoration: none;
+}
+
+.task-key:hover {
+    text-decoration: underline;
+}
+
+.task-summary {
+    font-size: 0.9em;
+    color: #495057;
+    margin-top: 2px;
+}
+
+.task-actions {
+    margin-left: 10px;
+}
+
+.copy-link-btn {
+    background: none;
+    border: none;
+    color: #6c757d;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 3px;
+}
+
+.copy-link-btn:hover {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.analysis-badge { background-color: #17a2b8; color: white; }
+.dev-badge { background-color: #28a745; color: white; }
+.test-badge { background-color: #ffc107; color: #212529; }
 </style>
 
 <div class="container">
@@ -162,12 +235,31 @@
 
             <div id="statusMessage" class="alert d-none mt-3" role="alert"></div>
 
+            <!-- Замените существующую секцию createdTasks на эту: -->
             <div id="createdTasks" class="d-none mt-4">
-                <h3 class="h6 mb-3">✅ Созданные задачи:</h3>
-                <div class="mb-3">
-                    <small class="text-muted" id="tasksSummary"></small>
+                <div class="card border-success">
+                    <div class="card-header bg-success text-white">
+                        <h3 class="h6 mb-0">✅ Задачи успешно созданы в JIRA</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <strong>📊 Сводка:</strong>
+                            <span id="tasksSummary" class="ms-2"></span>
+                        </div>
+
+                        <h5 class="mb-3">🔗 Созданные задачи:</h5>
+                        <div id="taskList" class="task-list-container"></div>
+
+                        <div class="mt-3">
+                            <button id="copyLinksBtn" class="btn btn-outline-primary btn-sm">
+                                📋 Скопировать ссылки
+                            </button>
+                            <button id="createMoreBtn" class="btn btn-outline-secondary btn-sm ms-2">
+                                ➕ Создать еще задачи
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <div id="taskList"></div>
             </div>
         </div>
     </div>
@@ -188,9 +280,232 @@
                 console.error('Ошибка при выходе:', error);
             }
         });
+        // Отображение созданных задач
 
-        // Остальной JavaScript код для создания задач остается таким же
-        // как в предыдущей версии, только обновите пути API:
-        // /Jira/CreateTasks -> остается таким же
+// Fallback для старых браузеров
+function fallbackCopyToClipboard(text) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.select();
+    try {
+        document.execCommand('copy');
+    } catch (err) {
+        console.error('Fallback copy error:', err);
+    }
+    document.body.removeChild(textArea);
+}
+
+// Показать сообщение
+function showMessage(message, type) {
+    const statusElement = document.getElementById('statusMessage');
+    statusElement.textContent = message;
+    statusElement.className = 'alert';
+    
+    if (type === 'success') {
+        statusElement.classList.add('alert-success');
+    } else if (type === 'error') {
+        statusElement.classList.add('alert-danger');
+    } else if (type === 'warning') {
+        statusElement.classList.add('alert-warning');
+    }
+    
+    statusElement.classList.remove('d-none');
+    
+    // Автоматически скрываем сообщение через 5 секунд (кроме ошибок)
+    if (type !== 'error') {
+        setTimeout(() => {
+            statusElement.classList.add('d-none');
+        }, 5000);
+    }
+}
+
+// Управление состоянием кнопки создания задач
+function toggleCreateButton(loading) {
+    const createBtn = document.getElementById('createTasksBtn');
+    const createSpinner = document.getElementById('createSpinner');
+    
+    if (loading) {
+        createBtn.disabled = true;
+        createSpinner.classList.remove('d-none');
+    } else {
+        createBtn.disabled = false;
+        createSpinner.classList.add('d-none');
+    }
+}
+
+// Отображение созданных задач
+function displayCreatedTasks(tasks, tasksCreated, linksCreated) {
+    const taskList = document.getElementById('taskList');
+    const createdTasks = document.getElementById('createdTasks');
+    const tasksSummary = document.getElementById('tasksSummary');
+    
+    taskList.innerHTML = '';
+    
+    if (tasks.length === 0) {
+        taskList.innerHTML = '<div class="text-center text-muted">Нет созданных задач</div>';
+    } else {
+        tasks.forEach(task => {
+            const taskElement = document.createElement('div');
+            taskElement.className = 'created-task-item';
+            
+            // Определяем класс для бейджа в зависимости от типа задачи
+            let badgeClass = 'task-type-badge ';
+            if (task.type && task.type.includes('ANALYSIS')) {
+                badgeClass += 'analysis-badge';
+            } else if (task.type && task.type.includes('DEV')) {
+                badgeClass += 'dev-badge';
+            } else if (task.type && task.type.includes('TEST')) {
+                badgeClass += 'test-badge';
+            } else {
+                badgeClass += 'bg-secondary';
+            }
+            
+            taskElement.innerHTML = `
+                <span class="${badgeClass}">${task.type || 'TASK'}</span>
+                <div class="task-info">
+                    <a href="${task.url}" target="_blank" class="task-key">
+                        ${task.key}
+                    </a>
+                    <div class="task-summary">${task.summary || 'Без названия'}</div>
+                </div>
+                <div class="task-actions">
+                    <button class="copy-link-btn" title="Скопировать ссылку" data-url="${task.url}">
+                        📋
+                    </button>
+                </div>
+            `;
+            taskList.appendChild(taskElement);
+        });
+
+        // Добавляем обработчики для кнопок копирования
+        document.querySelectorAll('.copy-link-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const url = this.getAttribute('data-url');
+                copyToClipboard(url);
+                showMessage('Ссылка скопирована в буфер обмена!', 'success');
+            });
+        });
+    }
+    
+    // Обновляем сводку
+    tasksSummary.textContent = `Создано задач: ${tasksCreated}, блокирующих связей: ${linksCreated}`;
+    
+    // Показываем секцию с результатами
+    createdTasks.classList.remove('d-none');
+    
+    // Прокручиваем к результатам
+    createdTasks.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Функция копирования в буфер обмена
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).catch(err => {
+        // Fallback для старых браузеров
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+    });
+}
+
+
+// Обработчик кнопки "Скопировать ссылки"
+document.getElementById('copyLinksBtn').addEventListener('click', function() {
+    const taskLinks = Array.from(document.querySelectorAll('.task-key'))
+        .map(link => link.href)
+        .join('\n');
+    
+    if (taskLinks) {
+        copyToClipboard(taskLinks);
+        showMessage('Все ссылки скопированы в буфер обмена!', 'success');
+    } else {
+        showMessage('Нет ссылок для копирования', 'warning');
+    }
+});
+
+// Обработчик кнопки "Создать еще задачи"
+document.getElementById('createMoreBtn').addEventListener('click', function() {
+    document.getElementById('createdTasks').classList.add('d-none');
+    document.getElementById('taskForm').reset();
+    
+    // Восстанавливаем чекбоксы в выбранное состояние
+    document.getElementById('createAnalysis').checked = true;
+    document.getElementById('createDev').checked = true;
+    document.getElementById('createTest').checked = true;
+    updateTaskFlow();
+    
+    // Прокручиваем к форме
+    document.getElementById('taskForm').scrollIntoView({ behavior: 'smooth' });
+    
+    // Скрываем предыдущее сообщение
+    document.getElementById('statusMessage').classList.add('d-none');
+});
+
+// Обработка формы создания задач
+document.getElementById('taskForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const data = Object.fromEntries(formData);
+
+    // Валидация обязательных полей
+    if (!data.projectKey || !data.summary || !data.description) {
+        showMessage('Заполните все обязательные поля', 'error');
+        return;
+    }
+
+    // Валидация - хотя бы одна задача должна быть выбрана
+    if (!data.createAnalysis && !data.createDev && !data.createTest) {
+        showMessage('Выберите хотя бы один тип задачи для создания', 'error');
+        return;
+    }
+
+    try {
+        showMessage('Создание задач в JIRA...', 'warning');
+        toggleCreateButton(true);
+
+        const response = await fetch('/Jira/CreateTasks', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        console.log('Create tasks response:', result); // Для отладки
+
+        if (result.success) {
+            showMessage(`✅ Успешно создано ${result.tasksCreated} задач с ${result.linksCreated} блокирующими связями!`, 'success');
+            
+            if (result.tasks && result.tasks.length > 0) {
+                displayCreatedTasks(result.tasks, result.tasksCreated, result.linksCreated);
+            } else {
+                showMessage('Задачи созданы, но не удалось получить информацию о них', 'warning');
+            }
+            
+            // Очищаем форму после успешного создания
+            this.reset();
+            // Восстанавливаем чекбоксы в выбранное состояние
+            document.getElementById('createAnalysis').checked = true;
+            document.getElementById('createDev').checked = true;
+            document.getElementById('createTest').checked = true;
+            updateTaskFlow();
+        } else {
+            showMessage('❌ ' + (result.error || 'Ошибка при создании задач'), 'error');
+        }
+    } catch (error) {
+        console.error('Create tasks error:', error);
+        showMessage('❌ Ошибка сети: ' + error.message, 'error');
+    } finally {
+        toggleCreateButton(false);
+    }
+});
     </script>
 }
