@@ -1,4 +1,5 @@
-﻿using csmhelper.Models;
+﻿using csmhelper.Controllers;
+using csmhelper.Models;
 
 namespace csmhelper.services
 {
@@ -8,5 +9,7 @@ namespace csmhelper.services
         Task<bool> IsAuthenticatedAsync();
         Task LogoutAsync();
         Task<TaskCreationResponse> CreateLinkedTasksAsync(TaskCreationModel model);
+        Task<List<ProcessResult>> ProcessTasksAsync(List<string> taskKeys, string actionType, string targetStatus, string resolution);
+        Task<List<JiraTask>> SearchTasksAsync(CleanupFilterModel filters);
     }
 }

@@ -43,6 +43,11 @@
         margin-bottom: 3rem;
         border-radius: 0 0 30px 30px;
     }
+
+    .cleanup-card {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        color: white;
+    }
 </style>
 
 <div class="portal-header text-center">
@@ -71,7 +76,6 @@
                 </div>
             </a>
         </div>
-
         <div class="col-md-6 mb-4">
             <a href="@Url.Action("Index", "Jira")" class="text-decoration-none">
                 <div class="card portal-card task-card h-100">
@@ -83,6 +87,22 @@
                         </p>
                         <div class="mt-3">
                             <span class="btn btn-light">Создать задачи →</span>
+                        </div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-4 mb-4">
+            <a href="@Url.Action("Index", "Cleanup")" class="text-decoration-none">
+                <div class="card portal-card cleanup-card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="card-icon">🗑️</div>
+                        <h3 class="card-title">Очистка задач JIRA</h3>
+                        <p class="card-text">
+                            Удаление или перевод статусов задач по фильтрам: проекты, статусы, спринты, даты создания
+                        </p>
+                        <div class="mt-3">
+                            <span class="btn btn-light">Очистить задачи →</span>
                         </div>
                     </div>
                 </div>

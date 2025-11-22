@@ -23,14 +23,46 @@ namespace csmhelper.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> Login(JiraAuthModel model)
+        public async Task<IActionResult> Login([FromBody] JiraAuthModel model)
         {
-            if (!ModelState.IsValid)
+            // Добавим логирование для отладки
+            Console.WriteLine($"Login attempt - Model is null: {model == null}");
+            if (model != null)
+            {
+                Console.WriteLine($"Username: {model.Username}, Password: {(string.IsNullOrEmpty(model.Password) ? "empty" : "provided")}");
+            }
+
+            if (model == null)
             {
                 return Json(new AuthResponse
                 {
                     Success = false,
-                    Error = "Неверные данные для аутентификации"
+                    Error = "Данные не получены. Проверьте формат запроса."
+                });
+            }
+
+            if (!ModelState.IsValid)
+            {
+                var errors = string.Join(", ", ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage));
+
+                Console.WriteLine($"Model validation errors: {errors}");
+
+                return Json(new AuthResponse
+                {
+                    Success = false,
+                    Error = $"Неверные данные для аутентификации: {errors}"
+                });
+            }
+
+            // Проверяем конкретные поля
+            if (string.IsNullOrWhiteSpace(model.Username) || string.IsNullOrWhiteSpace(model.Password))
+            {
+                return Json(new AuthResponse
+                {
+                    Success = false,
+                    Error = "Логин и пароль обязательны для заполнения"
                 });
             }
 
