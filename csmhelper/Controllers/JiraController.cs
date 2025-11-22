@@ -36,7 +36,7 @@ namespace csmhelper.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> CreateTasks(TaskCreationModel model)
+        public async Task<IActionResult> CreateTasks([FromBody]TaskCreationModel model)
         {
             // Проверяем авторизацию для API запросов
             if (!IsAuthenticated())

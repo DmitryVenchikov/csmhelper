@@ -412,7 +412,40 @@ function copyToClipboard(text) {
         document.body.removeChild(textArea);
     });
 }
+        // Обновление визуализации потока задач
+        function updateTaskFlow() {
+            const analysisChecked = document.getElementById('createAnalysis').checked;
+            const devChecked = document.getElementById('createDev').checked;
+            const testChecked = document.getElementById('createTest').checked;
 
+            document.getElementById('analysisStep').classList.toggle('active', analysisChecked);
+            document.getElementById('devStep').classList.toggle('active', devChecked);
+            document.getElementById('testStep').classList.toggle('active', testChecked);
+
+            // Показываем/скрываем стрелки в зависимости от выбранных задач
+            const arrows = document.querySelectorAll('.connection-arrow');
+            if (analysisChecked && devChecked) {
+                arrows[0].style.display = 'block';
+            } else {
+                arrows[0].style.display = 'none';
+            }
+
+            if (devChecked && testChecked) {
+                arrows[1].style.display = 'block';
+            } else {
+                arrows[1].style.display = 'none';
+            }
+        }
+
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            updateTaskFlow();
+
+            // Обновляем визуализацию потока при изменении чекбоксов
+            document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                checkbox.addEventListener('change', updateTaskFlow);
+            });
+        });
 
 // Обработчик кнопки "Скопировать ссылки"
 document.getElementById('copyLinksBtn').addEventListener('click', function() {
@@ -446,66 +479,83 @@ document.getElementById('createMoreBtn').addEventListener('click', function() {
     document.getElementById('statusMessage').classList.add('d-none');
 });
 
-// Обработка формы создания задач
-document.getElementById('taskForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(this);
-    const data = Object.fromEntries(formData);
+        // Обработка формы создания задач
+        document.getElementById('taskForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
 
-    // Валидация обязательных полей
-    if (!data.projectKey || !data.summary || !data.description) {
-        showMessage('Заполните все обязательные поля', 'error');
-        return;
-    }
+            // Получаем значения из формы
+            const projectKey = document.getElementById('projectKey').value;
+            const summary = document.getElementById('summary').value;
+            const description = document.getElementById('description').value;
+            const createAnalysis = document.getElementById('createAnalysis').checked;
+            const createDev = document.getElementById('createDev').checked;
+            const createTest = document.getElementById('createTest').checked;
 
-    // Валидация - хотя бы одна задача должна быть выбрана
-    if (!data.createAnalysis && !data.createDev && !data.createTest) {
-        showMessage('Выберите хотя бы один тип задачи для создания', 'error');
-        return;
-    }
-
-    try {
-        showMessage('Создание задач в JIRA...', 'warning');
-        toggleCreateButton(true);
-
-        const response = await fetch('/Jira/CreateTasks', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(data)
-        });
-
-        const result = await response.json();
-
-        console.log('Create tasks response:', result); // Для отладки
-
-        if (result.success) {
-            showMessage(`✅ Успешно создано ${result.tasksCreated} задач с ${result.linksCreated} блокирующими связями!`, 'success');
-            
-            if (result.tasks && result.tasks.length > 0) {
-                displayCreatedTasks(result.tasks, result.tasksCreated, result.linksCreated);
-            } else {
-                showMessage('Задачи созданы, но не удалось получить информацию о них', 'warning');
+            // Валидация обязательных полей
+            if (!projectKey || !summary || !description) {
+                showMessage('Заполните все обязательные поля', 'error');
+                return;
             }
-            
-            // Очищаем форму после успешного создания
-            this.reset();
-            // Восстанавливаем чекбоксы в выбранное состояние
-            document.getElementById('createAnalysis').checked = true;
-            document.getElementById('createDev').checked = true;
-            document.getElementById('createTest').checked = true;
-            updateTaskFlow();
-        } else {
-            showMessage('❌ ' + (result.error || 'Ошибка при создании задач'), 'error');
-        }
-    } catch (error) {
-        console.error('Create tasks error:', error);
-        showMessage('❌ Ошибка сети: ' + error.message, 'error');
-    } finally {
-        toggleCreateButton(false);
-    }
-});
+
+            // Валидация - хотя бы одна задача должна быть выбрана
+            if (!createAnalysis && !createDev && !createTest) {
+                showMessage('Выберите хотя бы один тип задачи для создания', 'error');
+                return;
+            }
+
+            try {
+                showMessage('Создание задач в JIRA...', 'warning');
+                toggleCreateButton(true);
+
+                // Формируем объект данных правильно
+                const requestData = {
+                    projectKey: projectKey,
+                    summary: summary,
+                    description: description,
+                    createAnalysis: createAnalysis,
+                    createDev: createDev,
+                    createTest: createTest
+                };
+
+                console.log('Sending data:', requestData); // Для отладки
+
+                const response = await fetch('/Jira/CreateTasks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const result = await response.json();
+
+                console.log('Create tasks response:', result); // Для отладки
+
+                if (result.success) {
+                    showMessage(`✅ Успешно создано ${result.tasksCreated} задач с ${result.linksCreated} блокирующими связями!`, 'success');
+
+                    if (result.tasks && result.tasks.length > 0) {
+                        displayCreatedTasks(result.tasks, result.tasksCreated, result.linksCreated);
+                    } else {
+                        showMessage('Задачи созданы, но не удалось получить информацию о них', 'warning');
+                    }
+
+                    // Очищаем форму после успешного создания
+                    this.reset();
+                    // Восстанавливаем чекбоксы в выбранное состояние
+                    document.getElementById('createAnalysis').checked = true;
+                    document.getElementById('createDev').checked = true;
+                    document.getElementById('createTest').checked = true;
+                    updateTaskFlow();
+                } else {
+                    showMessage('❌ ' + (result.error || 'Ошибка при создании задач'), 'error');
+                }
+            } catch (error) {
+                console.error('Create tasks error:', error);
+                showMessage('❌ Ошибка сети: ' + error.message, 'error');
+            } finally {
+                toggleCreateButton(false);
+            }
+        });
     </script>
 }
