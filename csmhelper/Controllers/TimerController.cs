@@ -4,17 +4,21 @@ using System.Diagnostics;
 
 namespace csmhelper.Controllers
 {
-    public class HomeController : Controller
+    public class TimerController : Controller
     {
-        private readonly ILogger<HomeController> _logger;
+        private readonly ILogger<TimerController> _logger;
 
-        public HomeController(ILogger<HomeController> logger)
+        public TimerController(ILogger<TimerController> logger)
         {
             _logger = logger;
         }
 
-        // Главная страница портала
         public IActionResult Index()
+        {
+            return View();
+        }
+
+        public IActionResult Privacy()
         {
             return View();
         }
@@ -24,11 +28,5 @@ namespace csmhelper.Controllers
         {
             return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
         }
-    }
-
-    public class ErrorViewModel
-    {
-        public string? RequestId { get; set; }
-        public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
     }
 }

@@ -1,0 +1,196 @@
+﻿@{
+    ViewData["Title"] = "Создатель задач JIRA";
+}
+
+<style>
+    .task-step {
+        transition: all 0.3s ease;
+    }
+
+        .task-step.active {
+            font-weight: bold;
+            color: #0d6efd;
+        }
+
+    .border-dashed {
+        border: 2px dashed #dee2e6 !important;
+    }
+
+    .task-link {
+        transition: all 0.3s ease;
+        border-left: 4px solid transparent;
+    }
+
+        .task-link:hover {
+            background-color: #f8f9fa !important;
+            border-left-color: #0d6efd;
+            transform: translateX(5px);
+        }
+
+    .analysis-task {
+        border-left-color: #17a2b8 !important;
+    }
+
+    .dev-task {
+        border-left-color: #28a745 !important;
+    }
+
+    .test-task {
+        border-left-color: #ffc107 !important;
+    }
+
+    .connection-arrow {
+        color: #6c757d;
+        font-weight: bold;
+        margin: 0 10px;
+    }
+
+    .flow-diagram {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 10px;
+        padding: 20px;
+        margin: 20px 0;
+    }
+
+    .auth-status-bar {
+        background: #e7f3ff;
+        border-left: 4px solid #0d6efd;
+        padding: 10px 15px;
+        margin-bottom: 20px;
+        border-radius: 4px;
+    }
+</style>
+
+<div class="container">
+    <div class="auth-status-bar">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <span class="status-indicator status-authenticated"></span>
+                <span id="authStatusText">Вы авторизованы в JIRA</span>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" id="logoutBtn">
+                <i class="bi bi-box-arrow-right"></i> Выйти
+            </button>
+        </div>
+    </div>
+
+    <h1 class="text-center mb-4">🎯 Создатель задач JIRA</h1>
+
+    <!-- Карточка создания задач -->
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h2 class="h5 mb-3">📋 Создание связанных задач</h2>
+
+            <!-- Диаграмма потока -->
+            <div class="flow-diagram">
+                <div class="text-center mb-3">
+                    <small class="text-muted">Блокирующие связи между задачами</small>
+                </div>
+                <div class="d-flex justify-content-center align-items-center flex-wrap">
+                    <div class="task-step text-center p-3 active" id="analysisStep">
+                        <div class="fw-bold text-info">Аналитика</div>
+                        <small class="text-muted">Создает ТЗ</small>
+                    </div>
+                    <div class="connection-arrow">→ БЛОКИРУЕТ →</div>
+                    <div class="task-step text-center p-3 active" id="devStep">
+                        <div class="fw-bold text-success">Разработка</div>
+                        <small class="text-muted">Реализует функционал</small>
+                    </div>
+                    <div class="connection-arrow">→ БЛОКИРУЕТ →</div>
+                    <div class="task-step text-center p-3 active" id="testStep">
+                        <div class="fw-bold text-warning">Тестирование</div>
+                        <small class="text-muted">Проверяет качество</small>
+                    </div>
+                </div>
+            </div>
+
+            <form id="taskForm">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="projectKey" class="form-label">Ключ проекта JIRA:</label>
+                            <input type="text" class="form-control" id="projectKey" name="projectKey" placeholder="Например: SCRUM, DUMBLDOR" required>
+                            <div class="form-text">Укажите ключ проекта, в котором создавать задачи</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Создавать задачи:</label>
+                            <div class="checkbox-group">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="createAnalysis" name="createAnalysis" checked>
+                                    <label class="form-check-label" for="createAnalysis">
+                                        <span class="badge bg-info">ANALYSIS</span> Аналитика
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="createDev" name="createDev" checked>
+                                    <label class="form-check-label" for="createDev">
+                                        <span class="badge bg-success">DEV</span> Разработка
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="createTest" name="createTest" checked>
+                                    <label class="form-check-label" for="createTest">
+                                        <span class="badge bg-warning">TEST</span> Тестирование
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="summary" class="form-label">Заголовок задачи:</label>
+                    <input type="text" class="form-control" id="summary" name="summary" placeholder="Краткое описание функционала" required>
+                    <div class="form-text">Будет использован как основа для всех создаваемых задач</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="description" class="form-label">Описание задачи:</label>
+                    <textarea class="form-control" id="description" name="description" placeholder="Подробное описание требований и функционала..." rows="5" required></textarea>
+                    <div class="form-text">Базовое описание, которое будет дополнено для каждого типа задачи</div>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <button type="submit" class="btn btn-success btn-lg" id="createTasksBtn">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" id="createSpinner"></span>
+                        🚀 Создать задачи в JIRA
+                    </button>
+                </div>
+            </form>
+
+            <div id="statusMessage" class="alert d-none mt-3" role="alert"></div>
+
+            <div id="createdTasks" class="d-none mt-4">
+                <h3 class="h6 mb-3">✅ Созданные задачи:</h3>
+                <div class="mb-3">
+                    <small class="text-muted" id="tasksSummary"></small>
+                </div>
+                <div id="taskList"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Обработка выхода
+        document.getElementById('logoutBtn').addEventListener('click', async function () {
+            try {
+                const response = await fetch('/Auth/Logout', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    window.location.href = '/Auth/Login';
+                }
+            } catch (error) {
+                console.error('Ошибка при выходе:', error);
+            }
+        });
+
+        // Остальной JavaScript код для создания задач остается таким же
+        // как в предыдущей версии, только обновите пути API:
+        // /Jira/CreateTasks -> остается таким же
+    </script>
+}
