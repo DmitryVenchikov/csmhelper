@@ -17,7 +17,26 @@ builder.Services.AddSession(options =>
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
 });
+builder.Services.AddHttpClient<IJiraService, JiraService>(client =>
+{
+    client.BaseAddress = new Uri("https://jira.moscow.alfaintra.net");
+    client.Timeout = TimeSpan.FromSeconds(30);
+})
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
+    {
+        // Для корпоративных сертификатов можно добавить дополнительную логику
+        if (errors == System.Net.Security.SslPolicyErrors.None)
+            return true;
 
+        // Или доверять определенным сертификатам
+        if (cert?.Issuer.Contains("alfaintra") == true)
+            return true;
+
+        return errors == System.Net.Security.SslPolicyErrors.RemoteCertificateChainErrors;
+    }
+});
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
