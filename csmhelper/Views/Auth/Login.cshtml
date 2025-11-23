@@ -99,60 +99,70 @@
 
 @section Scripts {
     <script>
-        document.getElementById('authForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
+        document.addEventListener('DOMContentLoaded', function() {
+            // Получаем returnUrl из URL параметров или из sessionStorage
+            const urlParams = new URLSearchParams(window.location.search);
+            let returnUrl = urlParams.get('returnUrl');
 
-            const formData = new FormData(this);
-            const data = Object.fromEntries(formData);
-
-            if (!data.username || !data.password) {
-                showMessage('Заполните все поля', 'error');
-                return;
+            if (!returnUrl) {
+                returnUrl = sessionStorage.getItem('targetPage') || '/Jira';
             }
 
-            try {
-                showMessage('Выполняется авторизация...', 'warning');
-                toggleLoginButton(true);
+            console.log('Return URL detected:', returnUrl);
 
-                const response = await fetch('/Auth/Login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(data)
-                });
+            document.getElementById('authForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
 
-                const result = await response.json();
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
 
-                if (result.success) {
-                    showMessage('✅ Успешная авторизация! Перенаправление...', 'success');
-
-                    // Перенаправляем на страницу создания задач через 1.5 секунды
-                    setTimeout(() => {
-                        window.location.href = '/Jira';
-                    }, 1500);
-                } else {
-                    showMessage('❌ ' + (result.error || 'Ошибка авторизации'), 'error');
+                if (!username || !password) {
+                    showMessage('Заполните все поля', 'error');
+                    return;
                 }
-            } catch (error) {
-                showMessage('❌ Ошибка сети: ' + error.message, 'error');
-            } finally {
-                toggleLoginButton(false);
-            }
+
+                try {
+                    showMessage('Выполняется авторизация...', 'warning');
+                    toggleLoginButton(true);
+
+                    const response = await fetch('/Auth/Login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            username: username,
+                            password: password,
+                            returnUrl: returnUrl
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        showMessage('✅ Успешная авторизация! Перенаправление...', 'success');
+
+                        // Очищаем сохраненную страницу
+                        sessionStorage.removeItem('targetPage');
+
+                        // Используем returnUrl из ответа сервера
+                        const redirectUrl = result.returnUrl || returnUrl || '/Jira';
+                        console.log('Redirecting to:', redirectUrl);
+
+                        setTimeout(() => {
+                            window.location.href = redirectUrl;
+                        }, 1500);
+                    } else {
+                        showMessage('❌ ' + (result.error || 'Ошибка авторизации'), 'error');
+                    }
+                } catch (error) {
+                    console.error('Login error:', error);
+                    showMessage('❌ Ошибка сети: ' + error.message, 'error');
+                } finally {
+                    toggleLoginButton(false);
+                }
+            });
         });
-
-        function toggleLoginButton(loading) {
-            const loginBtn = document.getElementById('loginBtn');
-            const loginSpinner = document.getElementById('loginSpinner');
-
-            if (loading) {
-                loginBtn.disabled = true;
-                loginSpinner.classList.remove('d-none');
-            } else {
-                loginBtn.disabled = false;
-                loginSpinner.classList.add('d-none');
-            }
-        }
 
         function showMessage(message, type) {
             const statusElement = document.getElementById('statusMessage');
@@ -168,6 +178,19 @@
             }
 
             statusElement.classList.remove('d-none');
+        }
+
+        function toggleLoginButton(loading) {
+            const loginBtn = document.getElementById('loginBtn');
+            const loginSpinner = document.getElementById('loginSpinner');
+
+            if (loading) {
+                loginBtn.disabled = true;
+                loginSpinner.classList.remove('d-none');
+            } else {
+                loginBtn.disabled = false;
+                loginSpinner.classList.add('d-none');
+            }
         }
     </script>
 }

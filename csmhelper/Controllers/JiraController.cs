@@ -22,13 +22,13 @@ namespace csmhelper.Controllers
             // Проверяем авторизацию
             if (!IsAuthenticated())
             {
-                return RedirectToAction("Login", "Auth");
+                return RedirectToAction("Login", "Auth", new { returnUrl = "/Jira" });
             }
 
             var isAuthenticated = await _jiraService.IsAuthenticatedAsync();
             if (!isAuthenticated)
             {
-                return RedirectToAction("Login", "Auth");
+                return RedirectToAction("Login", "Auth", new { returnUrl = "/Jira" });
             }
 
             ViewBag.IsAuthenticated = isAuthenticated;

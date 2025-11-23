@@ -25,5 +25,6 @@
     public class AuthResponse : ApiResponse
     {
         public bool Authenticated { get; set; }
+        public string ReturnUrl { get; set; }
     }
 }

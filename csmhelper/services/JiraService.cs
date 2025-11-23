@@ -222,22 +222,24 @@ namespace csmhelper.services
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"JIRA API Response: {content}"); // Для отладки
+
                 var searchResult = JsonConvert.DeserializeObject<JiraSearchResult>(content);
 
-                return searchResult.Issues.Select(issue => new JiraTask
+                var tasks = searchResult.Issues.Select(issue => new JiraTask
                 {
                     Key = issue.Key,
-                    Summary = issue.Fields.Summary,
+                    Summary = issue.Fields.Summary ?? "Без названия",
                     Status = issue.Fields.Status?.Name ?? "Unknown",
-                    Created = issue.Fields.Created,
-                    Updated = issue.Fields.Updated,
+                    Created = issue.Fields.Created ?? DateTime.Now.ToString("yyyy-MM-dd"),
+                    Updated = issue.Fields.Updated ?? DateTime.Now.ToString("yyyy-MM-dd"),
                     Project = issue.Fields.Project?.Key ?? "Unknown",
-                    IssueType = issue.Fields.IssueType?.Name ?? "Unknown", // ИСПРАВЛЕНО: добавлено .Name
+                    IssueType = issue.Fields.IssueType?.Name ?? "Unknown",
                     Assignee = issue.Fields.Assignee?.DisplayName ?? "Unassigned",
                     Reporter = issue.Fields.Reporter?.DisplayName ?? "Unknown",
-                    Priority = issue.Fields.Priority?.Name ?? "None", // ИСПРАВЛЕНО: добавлено .Name
+                    Priority = issue.Fields.Priority?.Name ?? "None",
                     Labels = issue.Fields.Labels ?? new List<string>(),
-                    Resolution = issue.Fields.Resolution?.Name, // ИСПРАВЛЕНО: добавлено .Name
+                    Resolution = issue.Fields.Resolution?.Name,
                     DueDate = issue.Fields.DueDate,
                     TimeEstimate = issue.Fields.TimeEstimate,
                     TimeSpent = issue.Fields.TimeSpent,
@@ -245,84 +247,301 @@ namespace csmhelper.services
                     EpicLink = issue.Fields.EpicLink,
                     Url = $"{_jiraBaseUrl}/browse/{issue.Key}"
                 }).ToList();
+
+                Console.WriteLine($"Mapped {tasks.Count} tasks"); // Для отладки
+                return tasks;
             }
 
             throw new Exception($"Ошибка при поиске задач: {response.StatusCode}");
         }
+        public async Task<ProcessResult> TransitionIssueAsync(string issueKey, string targetStatus, string resolution)
+        {
+            try
+            {
+                Console.WriteLine($"Starting transition for {issueKey} to {targetStatus} with resolution {resolution}");
 
+                var transitions = await GetTransitionsAsync(issueKey);
+
+                Console.WriteLine($"Available transitions for {issueKey}: {string.Join(", ", transitions.Select(t => $"{t.Name} -> {t.To.Name}"))}");
+
+                // Ищем переход в целевой статус (нечеткое сравнение)
+                var targetTransition = transitions.FirstOrDefault(t =>
+                    t.To.Name.Equals(targetStatus, StringComparison.OrdinalIgnoreCase) ||
+                    t.To.Name.Replace(" ", "").Equals(targetStatus.Replace(" ", ""), StringComparison.OrdinalIgnoreCase) ||
+                    t.Name.Equals(targetStatus, StringComparison.OrdinalIgnoreCase));
+
+                if (targetTransition == null)
+                {
+                    // Пробуем найти переход по ключевым словам
+                    var closedKeywords = new[] { "close", "done", "resolve", "complete", "finished" };
+                    targetTransition = transitions.FirstOrDefault(t =>
+                        closedKeywords.Any(keyword =>
+                            t.To.Name.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                            t.Name.Contains(keyword, StringComparison.OrdinalIgnoreCase)));
+
+                    if (targetTransition == null)
+                    {
+                        return new ProcessResult
+                        {
+                            Key = issueKey,
+                            Success = false,
+                            Action = "transition",
+                            Message = $"Не найден переход в статус '{targetStatus}'",
+                            ErrorDetails = $"Доступные переходы: {string.Join(", ", transitions.Select(t => $"{t.Name} -> {t.To.Name}"))}"
+                        };
+                    }
+
+                    Console.WriteLine($"Found transition by keyword: {targetTransition.Name} -> {targetTransition.To.Name}");
+                }
+
+                Console.WriteLine($"Using transition: {targetTransition.Name} (ID: {targetTransition.Id}) to status: {targetTransition.To.Name}");
+
+                var context = _httpContextAccessor.HttpContext;
+                var username = context.Session.GetString("JiraUsername");
+                var password = context.Session.GetString("JiraPassword");
+
+                var authString = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+                _httpClient.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authString);
+
+                // Подготавливаем данные для перехода
+                var transitionData = new Dictionary<string, object>
+                {
+                    ["transition"] = new { id = targetTransition.Id }
+                };
+
+                // Добавляем resolution если указан и если переход в закрытый статус
+                if (!string.IsNullOrEmpty(resolution) &&
+                    (targetTransition.To.Name.Contains("close", StringComparison.OrdinalIgnoreCase) ||
+                     targetTransition.To.Name.Contains("done", StringComparison.OrdinalIgnoreCase) ||
+                     targetTransition.To.Name.Contains("resolve", StringComparison.OrdinalIgnoreCase)))
+                {
+                    transitionData["fields"] = new { resolution = new { name = resolution } };
+                    Console.WriteLine($"Adding resolution: {resolution}");
+                }
+
+                var json = JsonConvert.SerializeObject(transitionData);
+                Console.WriteLine($"Transition request data: {json}");
+
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync($"/rest/api/2/issue/{issueKey}/transitions", content);
+
+                Console.WriteLine($"Transition response status: {response.StatusCode}");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return new ProcessResult
+                    {
+                        Key = issueKey,
+                        Success = true,
+                        Action = "transitioned",
+                        Message = $"Задача переведена в статус '{targetTransition.To.Name}'",
+                        NewStatus = targetTransition.To.Name,
+                        Resolution = resolution
+                    };
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"Transition error response: {errorContent}");
+
+                    return new ProcessResult
+                    {
+                        Key = issueKey,
+                        Success = false,
+                        Action = "transition",
+                        Message = $"Ошибка при переводе статуса: {response.StatusCode}",
+                        ErrorDetails = errorContent
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Transition exception: {ex}");
+                return new ProcessResult
+                {
+                    Key = issueKey,
+                    Success = false,
+                    Action = "transition",
+                    Message = $"Исключение при переводе статуса: {ex.Message}",
+                    ErrorDetails = ex.ToString()
+                };
+            }
+        }
+        public async Task<List<Transition>> GetTransitionsAsync(string issueKey)
+        {
+            try
+            {
+                if (!await IsAuthenticatedAsync())
+                {
+                    throw new UnauthorizedAccessException("Требуется аутентификация");
+                }
+
+                var context = _httpContextAccessor.HttpContext;
+                var username = context.Session.GetString("JiraUsername");
+                var password = context.Session.GetString("JiraPassword");
+
+                var authString = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+                _httpClient.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authString);
+
+                var response = await _httpClient.GetAsync($"/rest/api/2/issue/{issueKey}/transitions?expand=transitions.fields");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var transitionsResponse = JsonConvert.DeserializeObject<TransitionsResponse>(content);
+                    return transitionsResponse.Transitions ?? new List<Transition>();
+                }
+                else
+                {
+                    Console.WriteLine($"Error getting transitions for {issueKey}: {response.StatusCode}");
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"Error content: {errorContent}");
+                    return new List<Transition>();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Exception getting transitions for {issueKey}: {ex}");
+                return new List<Transition>();
+            }
+        }
+        public async Task<string> GetCurrentStatusAsync(string issueKey)
+        {
+            try
+            {
+                if (!await IsAuthenticatedAsync())
+                {
+                    throw new UnauthorizedAccessException("Требуется аутентификация");
+                }
+
+                var context = _httpContextAccessor.HttpContext;
+                var username = context.Session.GetString("JiraUsername");
+                var password = context.Session.GetString("JiraPassword");
+
+                var authString = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+                _httpClient.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authString);
+
+                var response = await _httpClient.GetAsync($"/rest/api/2/issue/{issueKey}?fields=status");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var issue = JsonConvert.DeserializeObject<JiraIssue>(content);
+                    return issue.Fields.Status?.Name ?? "Unknown";
+                }
+
+                return "Unknown";
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting current status for {issueKey}: {ex}");
+                return "Unknown";
+            }
+        }
         public async Task<List<ProcessResult>> ProcessTasksAsync(List<string> taskKeys, string actionType, string targetStatus, string resolution)
         {
-            if (!await IsAuthenticatedAsync())
-            {
-                throw new UnauthorizedAccessException("Требуется аутентификация");
-            }
-
-            var context = _httpContextAccessor.HttpContext;
-            var username = context.Session.GetString("JiraUsername");
-            var password = context.Session.GetString("JiraPassword");
-
-            var authString = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
-            _httpClient.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authString);
-
             var results = new List<ProcessResult>();
 
-            foreach (var taskKey in taskKeys)
+            // Разбиваем на батчи по 3 задачи
+            var batches = new List<List<string>>();
+            for (int i = 0; i < taskKeys.Count; i += 3)
             {
-                try
+                batches.Add(taskKeys.Skip(i).Take(3).ToList());
+            }
+
+            foreach (var batch in batches)
+            {
+                var batchTasks = new List<Task<ProcessResult>>();
+
+                foreach (var taskKey in batch)
                 {
+                    // Получаем текущий статус для отладки
+                    var currentStatus = await GetCurrentStatusAsync(taskKey);
+                    Console.WriteLine($"Task {taskKey} current status: {currentStatus}");
+
                     if (actionType == "delete")
                     {
-                        var response = await _httpClient.DeleteAsync($"/rest/api/2/issue/{taskKey}");
-                        results.Add(new ProcessResult
-                        {
-                            Key = taskKey,
-                            Success = response.IsSuccessStatusCode,
-                            Action = "deleted",
-                            Message = response.IsSuccessStatusCode ?
-                                $"Задача {taskKey} успешно удалена" :
-                                $"Ошибка при удалении задачи {taskKey}"
-                        });
+                        batchTasks.Add(DeleteIssueAsync(taskKey));
                     }
                     else if (actionType == "transition")
                     {
-                        // Логика перевода статуса (упрощенная версия)
-                        var transitionData = new
-                        {
-                            transition = new { id = "your-transition-id-here" }, // Нужно получить ID перехода
-                            fields = string.IsNullOrEmpty(resolution) ? null : new { resolution = new { name = resolution } }
-                        };
-
-                        var json = JsonConvert.SerializeObject(transitionData);
-                        var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                        var response = await _httpClient.PostAsync($"/rest/api/2/issue/{taskKey}/transitions", content);
-                        results.Add(new ProcessResult
-                        {
-                            Key = taskKey,
-                            Success = response.IsSuccessStatusCode,
-                            Action = "transitioned",
-                            Message = response.IsSuccessStatusCode ?
-                                $"Задача {taskKey} переведена в статус {targetStatus}" :
-                                $"Ошибка при переводе задачи {taskKey}"
-                        });
+                        batchTasks.Add(TransitionIssueAsync(taskKey, targetStatus, resolution));
                     }
                 }
-                catch (Exception ex)
+
+                // Ожидаем завершения всех задач в батче
+                var batchResults = await Task.WhenAll(batchTasks);
+                results.AddRange(batchResults);
+
+                // Пауза между батчами чтобы не перегружать JIRA
+                if (batch != batches.Last())
                 {
-                    results.Add(new ProcessResult
-                    {
-                        Key = taskKey,
-                        Success = false,
-                        Action = actionType,
-                        Message = $"Ошибка при обработке задачи {taskKey}: {ex.Message}"
-                    });
+                    await Task.Delay(500);
                 }
             }
 
             return results;
         }
+        public async Task<ProcessResult> DeleteIssueAsync(string issueKey)
+        {
+            try
+            {
+                Console.WriteLine($"Starting delete for issue: {issueKey}");
 
+                var context = _httpContextAccessor.HttpContext;
+                var username = context.Session.GetString("JiraUsername");
+                var password = context.Session.GetString("JiraPassword");
+
+                var authString = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+                _httpClient.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authString);
+
+                var response = await _httpClient.DeleteAsync($"/rest/api/2/issue/{issueKey}");
+
+                Console.WriteLine($"Delete response status for {issueKey}: {response.StatusCode}");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return new ProcessResult
+                    {
+                        Key = issueKey,
+                        Success = true,
+                        Action = "deleted",
+                        Message = "Задача успешно удалена"
+                    };
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"Delete error response for {issueKey}: {errorContent}");
+
+                    return new ProcessResult
+                    {
+                        Key = issueKey,
+                        Success = false,
+                        Action = "delete",
+                        Message = $"Ошибка при удалении: {response.StatusCode}",
+                        ErrorDetails = errorContent
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Delete exception for {issueKey}: {ex}");
+                return new ProcessResult
+                {
+                    Key = issueKey,
+                    Success = false,
+                    Action = "delete",
+                    Message = $"Исключение при удалении: {ex.Message}",
+                    ErrorDetails = ex.ToString()
+                };
+            }
+        }
         private string BuildJqlQuery(CleanupFilterModel filters)
         {
             var jqlParts = new List<string>();
@@ -1055,31 +1274,94 @@ namespace csmhelper.services
     }
     public class JiraTask
     {
+        [JsonProperty("key")]
         public string Key { get; set; }
+
+        [JsonProperty("summary")]
         public string Summary { get; set; }
+
+        [JsonProperty("status")]
         public string Status { get; set; }
+
+        [JsonProperty("created")]
         public string Created { get; set; }
+
+        [JsonProperty("updated")]
         public string Updated { get; set; }
+
+        [JsonProperty("project")]
         public string Project { get; set; }
+
+        [JsonProperty("issueType")]
         public string IssueType { get; set; }
+
+        [JsonProperty("url")]
         public string Url { get; set; }
+
+        [JsonProperty("sprint")]
         public string Sprint { get; set; }
+
+        [JsonProperty("epicLink")]
         public string EpicLink { get; set; }
-        public string Assignee { get; set; } // ДОБАВЛЕНО
-        public string Reporter { get; set; } // ДОБАВЛЕНО
-        public string Priority { get; set; } // ДОБАВЛЕНО
-        public List<string> Labels { get; set; } = new List<string>(); // ДОБАВЛЕНО
-        public string Resolution { get; set; } // ДОБАВЛЕНО
-        public string DueDate { get; set; } // ДОБАВЛЕНО
-        public long? TimeEstimate { get; set; } // ДОБАВЛЕНО
-        public long? TimeSpent { get; set; } // ДОБАВЛЕНО
+
+        [JsonProperty("assignee")]
+        public string Assignee { get; set; }
+
+        [JsonProperty("reporter")]
+        public string Reporter { get; set; }
+
+        [JsonProperty("priority")]
+        public string Priority { get; set; }
+
+        [JsonProperty("labels")]
+        public List<string> Labels { get; set; } = new List<string>();
+
+        [JsonProperty("resolution")]
+        public string Resolution { get; set; }
+
+        [JsonProperty("dueDate")]
+        public string DueDate { get; set; }
+
+        [JsonProperty("timeEstimate")]
+        public long? TimeEstimate { get; set; }
+
+        [JsonProperty("timeSpent")]
+        public long? TimeSpent { get; set; }
     }
+
 
     public class ProcessResult
     {
+        [JsonProperty("key")]
         public string Key { get; set; }
+
+        [JsonProperty("success")]
         public bool Success { get; set; }
+
+        [JsonProperty("action")]
         public string Action { get; set; }
+
+        [JsonProperty("message")]
         public string Message { get; set; }
+
+        [JsonProperty("oldStatus")]
+        public string OldStatus { get; set; }
+
+        [JsonProperty("newStatus")]
+        public string NewStatus { get; set; }
+
+        [JsonProperty("resolution")]
+        public string Resolution { get; set; }
+
+        [JsonProperty("errorDetails")]
+        public string ErrorDetails { get; set; }
+    }
+    public class TransitionsResponse
+    {
+        [JsonProperty("expand")]
+        public string Expand { get; set; }
+
+        [JsonProperty("transitions")]
+        public List<Transition> Transitions { get; set; } = new List<Transition>();
     }
 }

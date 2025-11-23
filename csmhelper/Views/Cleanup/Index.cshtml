@@ -354,25 +354,36 @@
             taskList.innerHTML = '';
             selectedTasks.clear();
 
+            console.log('Received tasks:', tasks); // Для отладки
+
             if (tasks.length === 0) {
                 taskList.innerHTML = '<div class="text-center text-muted">Задачи не найдены</div>';
             } else {
                 tasks.forEach(task => {
+                    // Используем свойства в camelCase как приходят из JSON
+                    const taskKey = task.key || task.Key;
+                    const taskSummary = task.summary || task.Summary;
+                    const taskStatus = task.status || task.Status;
+                    const taskProject = task.project || task.Project;
+                    const taskCreated = task.created || task.Created;
+                    const taskUpdated = task.updated || task.Updated;
+                    const taskUrl = task.url || task.Url;
+
                     const taskElement = document.createElement('div');
                     taskElement.className = 'task-item';
                     taskElement.innerHTML = `
                         <div class="form-check">
-                            <input class="form-check-input task-checkbox" type="checkbox" data-key="${task.Key}">
+                            <input class="form-check-input task-checkbox" type="checkbox" data-key="${taskKey}">
                             <label class="form-check-label w-100">
-                                <div class="task-key">${task.Key}</div>
-                                <div class="task-summary">${task.Summary}</div>
+                                <div class="task-key">${taskKey}</div>
+                                <div class="task-summary">${taskSummary}</div>
                                 <div class="task-meta">
-                                    <span class="badge bg-secondary status-badge">${task.Status}</span>
-                                    <span class="badge bg-info status-badge">${task.Project}</span>
-                                    <span>Создана: ${new Date(task.Created).toLocaleDateString()}</span>
-                                    <span>Обновлена: ${new Date(task.Updated).toLocaleDateString()}</span>
+                                    <span class="badge bg-secondary status-badge">${taskStatus}</span>
+                                    <span class="badge bg-info status-badge">${taskProject}</span>
+                                    <span>Создана: ${formatDate(taskCreated)}</span>
+                                    <span>Обновлена: ${formatDate(taskUpdated)}</span>
                                 </div>
-                                <a href="${task.Url}" target="_blank" class="btn btn-sm btn-outline-primary mt-1">Открыть в JIRA</a>
+                                <a href="${taskUrl}" target="_blank" class="btn btn-sm btn-outline-primary mt-1">Открыть в JIRA</a>
                             </label>
                         </div>
                     `;
@@ -396,6 +407,18 @@
             tasksCount.textContent = tasks.length;
             tasksSection.classList.remove('d-none');
             updateProcessButton();
+        }
+
+        // Вспомогательная функция для форматирования даты
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+
+            try {
+                const date = new Date(dateString);
+                return date.toLocaleDateString();
+            } catch {
+                return dateString;
+            }
         }
 
         async function processTasks() {
@@ -453,11 +476,24 @@
 
             resultsList.innerHTML = '';
 
+            console.log('Process results:', results); // Для отладки
+
+            if (!results || results.length === 0) {
+                resultsList.innerHTML = '<div class="text-center text-muted">Нет результатов обработки</div>';
+                resultsSection.classList.remove('d-none');
+                return;
+            }
+
             results.forEach(result => {
+                // Используем свойства в camelCase как приходят из JSON
+                const key = result.key || result.Key;
+                const message = result.message || result.Message;
+                const success = result.success !== undefined ? result.success : result.Success;
+
                 const resultElement = document.createElement('div');
-                resultElement.className = `result-item ${result.Success ? 'result-success' : 'result-error'}`;
+                resultElement.className = `result-item ${success ? 'result-success' : 'result-error'}`;
                 resultElement.innerHTML = `
-                    <strong>${result.Key}</strong>: ${result.Message}
+                    <strong>${key || 'Unknown'}</strong>: ${message || 'No message'}
                 `;
                 resultsList.appendChild(resultElement);
             });

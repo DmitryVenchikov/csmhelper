@@ -24,12 +24,31 @@
                             <a class="nav-link text-dark" asp-area="" asp-controller="Timer" asp-action="Index">Таймер</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Jira" asp-action="Index">JIRA Задачи</a>
+                            <a class="nav-link text-dark" asp-area="" asp-controller="Jira" asp-action="Index" onclick="saveTargetPage('/Jira')">JIRA Задачи</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Cleanup" asp-action="Index">Очистка задач</a>
+                            <a class="nav-link text-dark" asp-area="" asp-controller="Cleanup" asp-action="Index" onclick="saveTargetPage('/Cleanup')">Очистка задач</a>
                         </li>
                     </ul>
+                    <script>
+                        // Сохраняем целевую страницу перед переходом
+                        function saveTargetPage(url) {
+                            sessionStorage.setItem('targetPage', url);
+                        }
+
+                        // При загрузке страницы авторизации восстанавливаем целевой URL
+                        document.addEventListener('DOMContentLoaded', function() {
+                            if (window.location.pathname === '/Auth/Login') {
+                                const targetPage = sessionStorage.getItem('targetPage') || '/Jira';
+                                // Сохраняем в скрытое поле или передаем в форму
+                                document.querySelectorAll('a, button').forEach(element => {
+                                    if (element.href && element.href.includes('/Auth/Login')) {
+                                        element.href += '?returnUrl=' + encodeURIComponent(targetPage);
+                                    }
+                                });
+                            }
+                        });
+                    </script>
                 </div>
             </div>
         </nav>

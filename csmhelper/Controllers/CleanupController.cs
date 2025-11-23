@@ -22,13 +22,13 @@ namespace csmhelper.Controllers
             // Проверяем авторизацию
             if (!IsAuthenticated())
             {
-                return RedirectToAction("Login", "Auth");
+                return RedirectToAction("Login", "Auth", new { returnUrl = "/Cleanup" });
             }
 
             var isAuthenticated = await _jiraService.IsAuthenticatedAsync();
             if (!isAuthenticated)
             {
-                return RedirectToAction("Login", "Auth");
+                return RedirectToAction("Login", "Auth", new { returnUrl = "/Cleanup" });
             }
 
             ViewBag.IsAuthenticated = isAuthenticated;
@@ -65,7 +65,16 @@ namespace csmhelper.Controllers
 
             try
             {
+                Console.WriteLine($"ProcessTasks called: {model.TaskKeys.Count} tasks, Action: {model.ActionType}, TargetStatus: {model.TargetStatus}, Resolution: {model.Resolution}");
+
                 var results = await _jiraService.ProcessTasksAsync(model.TaskKeys, model.ActionType, model.TargetStatus, model.Resolution);
+
+                Console.WriteLine($"Process tasks completed: {results.Count} results");
+                foreach (var result in results)
+                {
+                    Console.WriteLine($"Result: {result.Key} - Success: {result.Success} - Message: {result.Message}");
+                }
+
                 return Json(new { success = true, results = results });
             }
             catch (Exception ex)

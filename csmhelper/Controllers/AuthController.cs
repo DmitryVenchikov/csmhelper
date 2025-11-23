@@ -16,53 +16,42 @@ namespace csmhelper.Controllers
             _logger = logger;
         }
 
-        // Страница авторизации
-        public IActionResult Login()
+        [HttpGet]
+        public IActionResult Login(string returnUrl = null)
         {
+            // Логируем полученный returnUrl для отладки
+            Console.WriteLine($"Login page requested with returnUrl: {returnUrl}");
+
+            // Если returnUrl не указан, пробуем получить из sessionStorage через JavaScript
+            if (string.IsNullOrEmpty(returnUrl))
+            {
+                returnUrl = "/Jira"; // значение по умолчанию
+            }
+
+            ViewData["ReturnUrl"] = returnUrl;
             return View();
         }
 
         [HttpPost]
-        public async Task<IActionResult> Login([FromBody] JiraAuthModel model)
+        public async Task<IActionResult> Login([FromBody] LoginRequestModel model)
         {
-            // Добавим логирование для отладки
-            Console.WriteLine($"Login attempt - Model is null: {model == null}");
-            if (model != null)
-            {
-                Console.WriteLine($"Username: {model.Username}, Password: {(string.IsNullOrEmpty(model.Password) ? "empty" : "provided")}");
-            }
+            Console.WriteLine($"Login attempt - ReturnUrl: {model.ReturnUrl}");
 
             if (model == null)
             {
                 return Json(new AuthResponse
                 {
                     Success = false,
-                    Error = "Данные не получены. Проверьте формат запроса."
+                    Error = "Данные не получены"
                 });
             }
 
-            if (!ModelState.IsValid)
-            {
-                var errors = string.Join(", ", ModelState.Values
-                    .SelectMany(v => v.Errors)
-                    .Select(e => e.ErrorMessage));
-
-                Console.WriteLine($"Model validation errors: {errors}");
-
-                return Json(new AuthResponse
-                {
-                    Success = false,
-                    Error = $"Неверные данные для аутентификации: {errors}"
-                });
-            }
-
-            // Проверяем конкретные поля
             if (string.IsNullOrWhiteSpace(model.Username) || string.IsNullOrWhiteSpace(model.Password))
             {
                 return Json(new AuthResponse
                 {
                     Success = false,
-                    Error = "Логин и пароль обязательны для заполнения"
+                    Error = "Логин и пароль обязательны"
                 });
             }
 
@@ -72,14 +61,18 @@ namespace csmhelper.Controllers
 
                 if (success)
                 {
-                    // Устанавливаем флаг авторизации в сессии
                     HttpContext.Session.SetString("IsAuthenticated", "true");
+
+                    // Используем returnUrl из запроса или значение по умолчанию
+                    var returnUrl = model.ReturnUrl ?? "/Jira";
+                    Console.WriteLine($"Authentication successful, redirecting to: {returnUrl}");
 
                     return Json(new AuthResponse
                     {
                         Success = true,
                         Authenticated = true,
-                        Message = "Успешная аутентификация"
+                        Message = "Успешная аутентификация",
+                        ReturnUrl = returnUrl
                     });
                 }
                 else
@@ -104,6 +97,13 @@ namespace csmhelper.Controllers
             }
         }
 
+        public class LoginRequestModel
+        {
+            public string Username { get; set; }
+            public string Password { get; set; }
+            public string ReturnUrl { get; set; }
+        }
+    
         [HttpPost]
         public async Task<IActionResult> Logout()
         {
@@ -130,6 +130,6 @@ namespace csmhelper.Controllers
             });
         }
     }
-
+    
   
 }
