@@ -1,8 +1,42 @@
+using csmhelper.services;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
+builder.Services.AddHttpClient();
+builder.Services.AddHttpContextAccessor();
 
+// Регистрация сервисов
+builder.Services.AddScoped<IJiraService, JiraService>();
+
+// Настройка сессий
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(30);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+});
+builder.Services.AddHttpClient<IJiraService, JiraService>(client =>
+{
+    client.BaseAddress = new Uri("https://jira.moscow.alfaintra.net");
+    client.Timeout = TimeSpan.FromSeconds(30);
+})
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
+    {
+        // Для корпоративных сертификатов можно добавить дополнительную логику
+        if (errors == System.Net.Security.SslPolicyErrors.None)
+            return true;
+
+        // Или доверять определенным сертификатам
+        if (cert?.Issuer.Contains("alfaintra") == true)
+            return true;
+
+        return errors == System.Net.Security.SslPolicyErrors.RemoteCertificateChainErrors;
+    }
+});
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -19,6 +53,8 @@ app.UseStaticFiles();
 app.UseRouting();
 
 app.UseAuthorization();
+
+app.UseSession(); // Включаем поддержку сессий
 
 app.MapControllerRoute(
     name: "default",

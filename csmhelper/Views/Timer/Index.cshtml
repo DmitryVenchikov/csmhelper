@@ -1,0 +1,632 @@
+﻿@{
+    ViewData["Title"] = "Таймер скрам-митингов";
+}
+
+@section Styles {
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        .timer-page {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .timer-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 0;
+        }
+
+        .timer-container {
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: bold;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+            input:focus {
+                outline: none;
+                border-color: #667eea;
+            }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+            .btn-primary:hover {
+                background: #5a6fd8;
+                transform: translateY(-2px);
+            }
+
+        .btn-secondary {
+            background: #4CAF50;
+            color: white;
+        }
+
+            .btn-secondary:hover {
+                background: #45a049;
+                transform: translateY(-2px);
+            }
+
+        .btn-warning {
+            background: #ff9800;
+            color: white;
+        }
+
+            .btn-warning:hover {
+                background: #e68900;
+                transform: translateY(-2px);
+            }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+            .btn-danger:hover {
+                background: #da190b;
+                transform: translateY(-2px);
+            }
+
+        .timer-section {
+            margin-top: 20px;
+        }
+
+        .participant-info {
+            font-size: 1.2em;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .time-info {
+            margin-bottom: 15px;
+            font-size: 1.1em;
+            color: #666;
+        }
+
+        .timer-display {
+            margin: 30px 0;
+        }
+
+        #timer {
+            font-size: 4em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 20px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            width: 100%;
+            transition: width 1s linear;
+        }
+
+        .controls {
+            margin: 20px 0;
+        }
+
+        .status-message {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .status-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .meeting-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-align: left;
+        }
+
+            .meeting-info div {
+                margin-bottom: 5px;
+                font-size: 0.9em;
+                color: #555;
+            }
+
+        /* Анимации */
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        .participant-change {
+            animation: participantChange 0.5s ease-in-out;
+        }
+
+        @@keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @@keyframes participantChange {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.05);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        /* Адаптивность */
+        @@media (max-width: 600px) {
+            .timer-container {
+                margin: 20px;
+                padding: 20px;
+            }
+
+            #timer {
+                font-size: 3em;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+
+            .btn {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+
+            .timer-content {
+                padding: 1rem 0;
+            }
+        }
+    </style>
+}
+
+<div class="timer-page">
+    <!-- Хедер будет автоматически подставлен из _Layout.cshtml -->
+
+    <div class="timer-content">
+        <div class="timer-container">
+            <h1>Meeting Timer</h1>
+
+            <!-- Настройки встречи -->
+            <div class="setup-section" id="setupSection">
+                <div class="form-group">
+                    <label for="duration">Длительность встречи (минуты):</label>
+                    <input type="number" id="duration" min="1" max="180" value="10">
+                </div>
+
+                <div class="form-group">
+                    <label for="participants">Количество участников:</label>
+                    <input type="number" id="participants" min="1" max="50" value="3">
+                </div>
+
+                <button id="startBtn" class="btn btn-primary">Начать встречу</button>
+            </div>
+
+            <!-- Таймер -->
+            <div class="timer-section" id="timerSection" style="display: none;">
+                <div class="participant-info">
+                    Участник <span id="currentParticipant">1</span> из <span id="totalParticipants">3</span>
+                </div>
+
+                <div class="time-info">
+                    Время на выступление: <span id="timePerParticipant">03:20</span>
+                </div>
+
+                <div class="timer-display">
+                    <div id="timer">03:20</div>
+                    <div class="progress-bar">
+                        <div id="progress" class="progress-fill"></div>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <button id="addTimeBtn" class="btn btn-secondary">+30 сек</button>
+                    <button id="nextParticipantBtn" class="btn btn-warning">Следующий участник</button>
+                    <button id="stopBtn" class="btn btn-danger">Завершить</button>
+                </div>
+
+                <div class="status-message" id="statusMessage"></div>
+
+                <div class="meeting-info">
+                    <div>Общее время встречи: <span id="totalMeetingTime">10:00</span></div>
+                    <div>Оставшееся время встречи: <span id="remainingMeetingTime">10:00</span></div>
+                    <div>Осталось участников: <span id="remainingParticipants">3</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Футер будет автоматически подставлен из _Layout.cshtml -->
+</div>
+
+@section Scripts {
+    <script>
+        class MeetingTimer {
+            constructor() {
+                this.isRunning = false;
+                this.updateInterval = null;
+
+                // Состояние таймера
+                this.state = {
+                    totalDuration: 0, // в секундах
+                    originalDuration: 0, // исходная длительность
+                    participants: 0,
+                    currentParticipant: 1,
+                    startTime: null,
+                    extraTimeAdded: 0,
+                    remainingTime: 0,
+                    timePerParticipant: 0,
+                    elapsedTime: 0 // общее прошедшее время
+                };
+
+                this.initializeEventListeners();
+            }
+
+            initializeEventListeners() {
+                document.getElementById('startBtn').addEventListener('click', () => this.startMeeting());
+                document.getElementById('addTimeBtn').addEventListener('click', () => this.addTime());
+                document.getElementById('nextParticipantBtn').addEventListener('click', () => this.nextParticipant());
+                document.getElementById('stopBtn').addEventListener('click', () => this.stopMeeting());
+            }
+
+            startMeeting() {
+                const duration = parseInt(document.getElementById('duration').value);
+                const participants = parseInt(document.getElementById('participants').value);
+
+                if (!duration || !participants || duration <= 0 || participants <= 0) {
+                    this.showStatus('Пожалуйста, введите корректные значения', 'warning');
+                    return;
+                }
+
+                // Сбрасываем состояние
+                this.state = {
+                    totalDuration: duration * 60,
+                    originalDuration: duration * 60,
+                    participants: participants,
+                    currentParticipant: 1,
+                    startTime: Date.now() / 1000,
+                    extraTimeAdded: 0,
+                    remainingTime: 0,
+                    timePerParticipant: 0,
+                    elapsedTime: 0
+                };
+
+                // Вычисляем время на каждого участника
+                this.calculateTimePerParticipant();
+
+                this.showSetupSection(false);
+                this.isRunning = true;
+                this.startTimerUpdates();
+                this.updateDisplay();
+                this.showStatus('Встреча началась!', 'success');
+            }
+
+            calculateTimePerParticipant() {
+                const remainingParticipants = this.state.participants - this.state.currentParticipant + 1;
+                const remainingTime = this.state.totalDuration - this.state.elapsedTime;
+                this.state.timePerParticipant = remainingTime / remainingParticipants;
+                this.state.remainingTime = this.state.timePerParticipant;
+            }
+
+            getTimerState() {
+                if (!this.isRunning) return;
+
+                const currentTime = Date.now() / 1000;
+                const elapsedForCurrent = currentTime - this.state.startTime;
+
+                this.state.remainingTime = Math.max(0, this.state.timePerParticipant - elapsedForCurrent + this.state.extraTimeAdded);
+
+                // Автоматический переход к следующему участнику при истечении времени
+                if (this.state.remainingTime <= 0) {
+                    this.advanceToNextParticipant(true);
+                    return;
+                }
+
+                this.updateDisplay();
+            }
+
+            updateDisplay() {
+                // Обновляем информацию об участниках
+                document.getElementById('currentParticipant').textContent = this.state.currentParticipant;
+                document.getElementById('totalParticipants').textContent = this.state.participants;
+
+                // Обновляем таймер
+                document.getElementById('timer').textContent = this.formatTime(this.state.remainingTime);
+                document.getElementById('timePerParticipant').textContent = this.formatTime(this.state.timePerParticipant);
+
+                // Обновляем прогресс-бар
+                const progressPercentage = this.calculateProgressPercentage();
+                const progressBar = document.getElementById('progress');
+                progressBar.style.width = progressPercentage + '%';
+
+                // Меняем цвет прогресс-бара
+                if (progressPercentage < 20) {
+                    progressBar.style.background = 'linear-gradient(90deg, #f44336, #ff9800)';
+                } else if (progressPercentage < 50) {
+                    progressBar.style.background = 'linear-gradient(90deg, #ff9800, #ffeb3b)';
+                } else {
+                    progressBar.style.background = 'linear-gradient(90deg, #4CAF50, #8BC34A)';
+                }
+
+                // Обновляем информацию о встрече
+                this.updateMeetingInfo();
+            }
+
+            calculateProgressPercentage() {
+                if (this.state.timePerParticipant === 0) return 0;
+                return Math.max(0, Math.min(100, (this.state.remainingTime / this.state.timePerParticipant) * 100));
+            }
+
+            addTime() {
+                if (!this.isRunning) return;
+
+                const extraTime = 30; // 30 секунд
+                const remainingParticipantsAfterCurrent = this.state.participants - this.state.currentParticipant;
+
+                if (remainingParticipantsAfterCurrent === 0) {
+                    // Последний участник - просто добавляем время
+                    this.state.extraTimeAdded += extraTime;
+                    this.showStatus(`Добавлено ${extraTime} секунд последнему участнику`, 'info');
+                } else {
+                    // ✅ ИСПРАВЛЕННАЯ ЛОГИКА: Добавляем время текущему участнику
+                    this.state.extraTimeAdded += extraTime;
+
+                    // ✅ Время следующих участников уменьшается автоматически при расчете
+                    this.showStatus(
+                        `Добавлено ${extraTime} секунд текущему участнику. ` +
+                        `Время следующих участников будет уменьшено`,
+                        'info'
+                    );
+                }
+
+                this.updateDisplay();
+            }
+
+            nextParticipant() {
+                if (!this.isRunning) return;
+
+                this.advanceToNextParticipant(false);
+            }
+
+            advanceToNextParticipant(isAutomatic) {
+                const currentTime = Date.now() / 1000;
+                const elapsedForCurrent = currentTime - this.state.startTime;
+
+                // Вычисляем фактически использованное время текущим участником
+                const actualTimeUsed = Math.min(elapsedForCurrent, this.state.timePerParticipant + this.state.extraTimeAdded);
+
+                // Обновляем общее прошедшее время
+                this.state.elapsedTime += actualTimeUsed;
+
+                // Вычисляем неиспользованное время
+                const unusedTime = Math.max(0, this.state.timePerParticipant - actualTimeUsed + this.state.extraTimeAdded);
+
+                // Сохраняем номер предыдущего участника для сообщения
+                const previousParticipant = this.state.currentParticipant;
+
+                // Переходим к следующему участнику
+                this.state.currentParticipant++;
+                this.state.startTime = currentTime;
+                this.state.extraTimeAdded = 0;
+
+                // Проверяем, не завершилась ли встреча
+                if (this.state.currentParticipant > this.state.participants) {
+                    this.meetingFinished();
+                    return;
+                }
+
+                if (unusedTime > 0 && isAutomatic) {
+                    // ✅ ИСПРАВЛЕННАЯ ЛОГИКА: При автоматическом переходе неиспользованное время распределяется
+                    const remainingParticipants = this.state.participants - this.state.currentParticipant + 1;
+                    const extraTimePerParticipant = unusedTime / remainingParticipants;
+
+                    // Увеличиваем общее время встречи на неиспользованное время
+                    this.state.totalDuration += unusedTime;
+
+                    this.showStatus(
+                        `Участник ${previousParticipant} завершил досрочно. ` +
+                        `+${this.formatTime(extraTimePerParticipant)} каждому из ${remainingParticipants} участников`,
+                        'info'
+                    );
+                } else if (!isAutomatic) {
+                    // При ручном переходе время просто перераспределяется
+                    this.showStatus(`Переход к участнику ${this.state.currentParticipant}`, 'success');
+                }
+
+                // Пересчитываем время для новых условий
+                this.calculateTimePerParticipant();
+
+                // Визуальный эффект
+                const participantInfo = document.getElementById('currentParticipant');
+                participantInfo.classList.add('participant-change');
+                setTimeout(() => participantInfo.classList.remove('participant-change'), 500);
+
+                this.updateDisplay();
+            }
+
+            updateMeetingInfo() {
+                const totalMeetingTimeElement = document.getElementById('totalMeetingTime');
+                const remainingMeetingTimeElement = document.getElementById('remainingMeetingTime');
+                const remainingParticipantsElement = document.getElementById('remainingParticipants');
+
+                if (totalMeetingTimeElement) {
+                    totalMeetingTimeElement.textContent = this.formatTime(this.state.totalDuration);
+                }
+
+                // Вычисляем оставшееся время встречи
+                const currentTime = Date.now() / 1000;
+                const elapsedTotal = this.state.elapsedTime + (currentTime - this.state.startTime);
+                const remainingMeetingTime = Math.max(0, this.state.totalDuration - elapsedTotal);
+
+                if (remainingMeetingTimeElement) {
+                    remainingMeetingTimeElement.textContent = this.formatTime(remainingMeetingTime);
+                }
+
+                if (remainingParticipantsElement) {
+                    remainingParticipantsElement.textContent = this.state.participants - this.state.currentParticipant + 1;
+                }
+            }
+
+            stopMeeting() {
+                this.isRunning = false;
+                this.showSetupSection(true);
+                this.showStatus('Встреча завершена', 'success');
+
+                if (this.updateInterval) {
+                    clearInterval(this.updateInterval);
+                    this.updateInterval = null;
+                }
+            }
+
+            meetingFinished() {
+                this.isRunning = false;
+                this.showSetupSection(true);
+                this.showStatus('Все участники выступили! Встреча завершена.', 'success');
+
+                if (this.updateInterval) {
+                    clearInterval(this.updateInterval);
+                    this.updateInterval = null;
+                }
+            }
+
+            startTimerUpdates() {
+                // Обновляем состояние каждую секунду
+                this.updateInterval = setInterval(() => {
+                    if (this.isRunning) {
+                        this.getTimerState();
+                    }
+                }, 1000);
+            }
+
+            showSetupSection(show) {
+                const setupSection = document.getElementById('setupSection');
+                const timerSection = document.getElementById('timerSection');
+
+                if (show) {
+                    setupSection.style.display = 'block';
+                    timerSection.style.display = 'none';
+                } else {
+                    setupSection.style.display = 'none';
+                    timerSection.style.display = 'block';
+                }
+            }
+
+            showStatus(message, type) {
+                const statusElement = document.getElementById('statusMessage');
+                statusElement.textContent = message;
+                statusElement.className = 'status-message';
+
+                if (type === 'success') {
+                    statusElement.classList.add('status-success');
+                } else if (type === 'warning') {
+                    statusElement.classList.add('status-warning');
+                } else if (type === 'info') {
+                    statusElement.classList.add('status-info');
+                }
+
+                // Автоматически скрываем сообщение через 5 секунд
+                setTimeout(() => {
+                    statusElement.textContent = '';
+                    statusElement.className = 'status-message';
+                }, 5000);
+            }
+
+            formatTime(seconds) {
+                const minutes = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            }
+        }
+
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', () => {
+            new MeetingTimer();
+        });
+    </script>
+}

@@ -2,12 +2,74 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - JIRA Task Creator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/csmhelper.styles.css" asp-append-version="true" />
+
+    <!-- Рендерим секцию Styles -->
+    @await RenderSectionAsync("Styles", required: false)
 </head>
 <body>
-    @RenderBody()
+    <header>
+        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
+            <div class="container">
+                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">🎯 Scrum Portal</a>
+                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
+                    <ul class="navbar-nav flex-grow-1">
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index">Главная</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-area="" asp-controller="Timer" asp-action="Index">Таймер</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-area="" asp-controller="Jira" asp-action="Index" onclick="saveTargetPage('/Jira')">JIRA Задачи</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-area="" asp-controller="Cleanup" asp-action="Index" onclick="saveTargetPage('/Cleanup')">Очистка задач</a>
+                        </li>
+                    </ul>
+                    <script>
+                        // Сохраняем целевую страницу перед переходом
+                        function saveTargetPage(url) {
+                            sessionStorage.setItem('targetPage', url);
+                        }
+
+                        // При загрузке страницы авторизации восстанавливаем целевой URL
+                        document.addEventListener('DOMContentLoaded', function() {
+                            if (window.location.pathname === '/Auth/Login') {
+                                const targetPage = sessionStorage.getItem('targetPage') || '/Jira';
+                                // Сохраняем в скрытое поле или передаем в форму
+                                document.querySelectorAll('a, button').forEach(element => {
+                                    if (element.href && element.href.includes('/Auth/Login')) {
+                                        element.href += '?returnUrl=' + encodeURIComponent(targetPage);
+                                    }
+                                });
+                            }
+                        });
+                    </script>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <div class="container">
+        <main role="main" class="pb-3">
+            @RenderBody()
+        </main>
+    </div>
+
+    <footer class="border-top footer text-muted">
+        <div class="container">
+            &copy; 2024 - JIRA Task Creator
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
+
+    <!-- Рендерим секцию Scripts -->
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

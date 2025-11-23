@@ -1,0 +1,196 @@
+﻿@{
+    ViewData["Title"] = "Авторизация в JIRA";
+    Layout = "_Layout";
+}
+
+<style>
+    .auth-container {
+        min-height: 80vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .auth-card {
+        max-width: 400px;
+        width: 100%;
+        border: none;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    .auth-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        text-align: center;
+        border-radius: 15px 15px 0 0;
+    }
+
+    .auth-body {
+        padding: 2rem;
+    }
+
+    .form-control {
+        padding: 12px;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        transition: all 0.3s;
+    }
+
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+
+    .btn-auth {
+        padding: 12px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        border-radius: 8px;
+        color: white;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+        .btn-auth:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+    .auth-links {
+        text-align: center;
+        margin-top: 1rem;
+    }
+</style>
+
+<div class="auth-container">
+    <div class="card auth-card">
+        <div class="auth-header">
+            <h2>🔐 Авторизация</h2>
+            <p class="mb-0">Войдите в систему для доступа к созданию задач</p>
+        </div>
+        <div class="card-body auth-body">
+            <form id="authForm">
+                <div class="mb-3">
+                    <label for="username" class="form-label">Логин JIRA:</label>
+                    <input type="text" class="form-control" id="username" name="username" placeholder="Введите ваш логин" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="password" class="form-label">Пароль:</label>
+                    <input type="password" class="form-control" id="password" name="password" placeholder="Введите ваш пароль" required>
+                </div>
+
+                <button type="submit" class="btn btn-auth w-100" id="loginBtn">
+                    <span class="spinner-border spinner-border-sm d-none" role="status" id="loginSpinner"></span>
+                    Войти в JIRA
+                </button>
+            </form>
+
+            <div id="statusMessage" class="alert d-none mt-3" role="alert"></div>
+
+            <div class="auth-links">
+                <a href="@Url.Action("Index", "Home")" class="text-decoration-none">← Вернуться на главную</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Получаем returnUrl из URL параметров или из sessionStorage
+            const urlParams = new URLSearchParams(window.location.search);
+            let returnUrl = urlParams.get('returnUrl');
+
+            if (!returnUrl) {
+                returnUrl = sessionStorage.getItem('targetPage') || '/Jira';
+            }
+
+            console.log('Return URL detected:', returnUrl);
+
+            document.getElementById('authForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+
+                if (!username || !password) {
+                    showMessage('Заполните все поля', 'error');
+                    return;
+                }
+
+                try {
+                    showMessage('Выполняется авторизация...', 'warning');
+                    toggleLoginButton(true);
+
+                    const response = await fetch('/Auth/Login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            username: username,
+                            password: password,
+                            returnUrl: returnUrl
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        showMessage('✅ Успешная авторизация! Перенаправление...', 'success');
+
+                        // Очищаем сохраненную страницу
+                        sessionStorage.removeItem('targetPage');
+
+                        // Используем returnUrl из ответа сервера
+                        const redirectUrl = result.returnUrl || returnUrl || '/Jira';
+                        console.log('Redirecting to:', redirectUrl);
+
+                        setTimeout(() => {
+                            window.location.href = redirectUrl;
+                        }, 1500);
+                    } else {
+                        showMessage('❌ ' + (result.error || 'Ошибка авторизации'), 'error');
+                    }
+                } catch (error) {
+                    console.error('Login error:', error);
+                    showMessage('❌ Ошибка сети: ' + error.message, 'error');
+                } finally {
+                    toggleLoginButton(false);
+                }
+            });
+        });
+
+        function showMessage(message, type) {
+            const statusElement = document.getElementById('statusMessage');
+            statusElement.textContent = message;
+            statusElement.className = 'alert';
+
+            if (type === 'success') {
+                statusElement.classList.add('alert-success');
+            } else if (type === 'error') {
+                statusElement.classList.add('alert-danger');
+            } else if (type === 'warning') {
+                statusElement.classList.add('alert-warning');
+            }
+
+            statusElement.classList.remove('d-none');
+        }
+
+        function toggleLoginButton(loading) {
+            const loginBtn = document.getElementById('loginBtn');
+            const loginSpinner = document.getElementById('loginSpinner');
+
+            if (loading) {
+                loginBtn.disabled = true;
+                loginSpinner.classList.remove('d-none');
+            } else {
+                loginBtn.disabled = false;
+                loginSpinner.classList.add('d-none');
+            }
+        }
+    </script>
+}

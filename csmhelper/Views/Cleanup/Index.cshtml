@@ -1,0 +1,536 @@
+﻿@{
+    ViewData["Title"] = "Очистка задач JIRA";
+}
+
+<style>
+    .filter-section {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .task-list {
+        max-height: 500px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 15px;
+    }
+
+    .task-item {
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+        transition: background-color 0.3s;
+    }
+
+        .task-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .task-item.selected {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+
+    .task-key {
+        font-weight: bold;
+        color: #1976d2;
+    }
+
+    .task-summary {
+        color: #333;
+        margin-bottom: 5px;
+    }
+
+    .task-meta {
+        font-size: 0.8em;
+        color: #666;
+    }
+
+    .status-badge {
+        font-size: 0.7em;
+        padding: 2px 6px;
+    }
+
+    .action-buttons {
+        position: sticky;
+        bottom: 0;
+        background: white;
+        padding: 15px;
+        border-top: 1px solid #dee2e6;
+        margin-top: 20px;
+    }
+
+    .results-section {
+        margin-top: 20px;
+    }
+
+    .result-item {
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 5px;
+    }
+
+    .result-success {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+    }
+
+    .result-error {
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+    }
+
+    .compact-input {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.875rem;
+    }
+
+    .form-section {
+        margin-bottom: 1.5rem;
+    }
+
+    .section-title {
+        font-size: 1.1em;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: #495057;
+        border-bottom: 2px solid #e9ecef;
+        padding-bottom: 0.5rem;
+    }
+</style>
+
+<div class="container">
+    <div class="auth-status-bar mb-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <span class="status-indicator status-authenticated"></span>
+                <span id="authStatusText">Вы авторизованы в JIRA</span>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" id="logoutBtn">
+                <i class="bi bi-box-arrow-right"></i> Выйти
+            </button>
+        </div>
+    </div>
+
+    <h1 class="text-center mb-4">🗑️ Очистка задач JIRA</h1>
+
+    <div class="alert alert-warning">
+        <strong>⚠️ Внимание!</strong> Эта операция может привести к безвозвратному удалению задач.
+        Всегда проверяйте найденные задачи перед выполнением операции.
+    </div>
+
+    <!-- Фильтры -->
+    <div class="filter-section">
+        <h5 class="section-title">🔍 Фильтры поиска</h5>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="form-section">
+                    <label class="form-label">Проекты:</label>
+                    <input type="text" class="form-control compact-input" id="projects"
+                           placeholder="DUMBLDOR, AM15 (через запятую)">
+                    <div class="form-text">Оставьте пустым для поиска во всех проектах</div>
+                </div>
+
+                <div class="form-section">
+                    <label class="form-label">Исключить проекты:</label>
+                    <input type="text" class="form-control compact-input" id="excludedProjects"
+                           placeholder="PROJ1, PROJ2 (через запятую)">
+                </div>
+
+                <div class="form-section">
+                    <label class="form-label">Статусы:</label>
+                    <input type="text" class="form-control compact-input" id="statuses"
+                           placeholder="SPRINT BACKLOG, IN PROGRESS, REVIEW">
+                    <div class="form-text">Оставьте пустым для поиска во всех статусах</div>
+                </div>
+
+                <div class="form-section">
+                    <label class="form-label">Исключить статусы:</label>
+                    <input type="text" class="form-control compact-input" id="excludedStatuses"
+                           placeholder="DONE, CLOSED">
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="form-section">
+                    <label class="form-label">Созданы до:</label>
+                    <input type="date" class="form-control compact-input" id="cleanupCreatedDate">
+                </div>
+
+                <div class="form-section">
+                    <label class="form-label">Исключить созданные после:</label>
+                    <input type="date" class="form-control compact-input" id="excludedCreatedDate">
+                </div>
+
+                <div class="form-section">
+                    <label class="form-label">Обновлены до:</label>
+                    <input type="date" class="form-control compact-input" id="cleanupUpdatedDate">
+                </div>
+
+                <div class="form-section">
+                    <label class="form-label">Исключить обновленные после:</label>
+                    <input type="date" class="form-control compact-input" id="excludedUpdatedDate">
+                </div>
+
+                <div class="form-section">
+                    <label class="form-label">Спринт:</label>
+                    <input type="text" class="form-control compact-input" id="sprintFilter"
+                           placeholder="Оставьте пустым для задач без спринта">
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center mt-3">
+            <button id="searchBtn" class="btn btn-primary">
+                <span class="spinner-border spinner-border-sm d-none" id="searchSpinner"></span>
+                🔍 Найти задачи
+            </button>
+        </div>
+    </div>
+
+    <!-- Найденные задачи -->
+    <div id="tasksSection" class="d-none">
+        <h5 class="section-title">📋 Найденные задачи (<span id="tasksCount">0</span>)</h5>
+
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="selectAll">
+            <label class="form-check-label" for="selectAll">Выбрать все</label>
+        </div>
+
+        <div class="task-list" id="taskList">
+            <!-- Задачи будут добавляться здесь -->
+        </div>
+
+        <!-- Действия -->
+        <div class="action-buttons">
+            <h5 class="section-title">🎯 Действие с выбранными задачами</h5>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Тип действия:</label>
+                        <select class="form-select" id="actionType">
+                            <option value="delete">🗑️ Удалить задачи</option>
+                            <option value="transition">🔄 Перевести в статус</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div id="transitionSection" class="d-none">
+                        <div class="mb-3">
+                            <label class="form-label">Целевой статус:</label>
+                            <input type="text" class="form-control" id="targetStatus" placeholder="Closed">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Резолюция (для Closed):</label>
+                            <select class="form-select" id="resolution">
+                                <option value="">-- Без резолюции --</option>
+                                <option value="Done">Done</option>
+                                <option value="Cancelled">Cancelled</option>
+                                <option value="Won't Do">Won't Do</option>
+                                <option value="Duplicate">Duplicate</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center">
+                <button id="processBtn" class="btn btn-danger btn-lg" disabled>
+                    <span class="spinner-border spinner-border-sm d-none" id="processSpinner"></span>
+                    🚀 Выполнить действие
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Результаты -->
+    <div id="resultsSection" class="results-section d-none">
+        <h5 class="section-title">📊 Результаты обработки</h5>
+        <div id="resultsList"></div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        let selectedTasks = new Set();
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Обработка выхода
+            document.getElementById('logoutBtn').addEventListener('click', async function() {
+                try {
+                    const response = await fetch('/Auth/Logout', { method: 'POST' });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        window.location.href = '/Auth/Login';
+                    }
+                } catch (error) {
+                    console.error('Ошибка при выходе:', error);
+                }
+            });
+
+            // Переключение секции перевода статуса
+            document.getElementById('actionType').addEventListener('change', function() {
+                const transitionSection = document.getElementById('transitionSection');
+                if (this.value === 'transition') {
+                    transitionSection.classList.remove('d-none');
+                } else {
+                    transitionSection.classList.add('d-none');
+                }
+            });
+
+            // Выбор всех задач
+            document.getElementById('selectAll').addEventListener('change', function() {
+                const checkboxes = document.querySelectorAll('.task-checkbox');
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = this.checked;
+                    const taskKey = checkbox.dataset.key;
+                    if (this.checked) {
+                        selectedTasks.add(taskKey);
+                    } else {
+                        selectedTasks.delete(taskKey);
+                    }
+                });
+                updateProcessButton();
+            });
+
+            // Поиск задач
+            document.getElementById('searchBtn').addEventListener('click', searchTasks);
+
+            // Обработка задач
+            document.getElementById('processBtn').addEventListener('click', processTasks);
+        });
+
+        async function searchTasks() {
+            const filters = {
+                Projects: document.getElementById('projects').value.split(',').map(s => s.trim()).filter(s => s),
+                ExcludedProjects: document.getElementById('excludedProjects').value.split(',').map(s => s.trim()).filter(s => s),
+                Statuses: document.getElementById('statuses').value.split(',').map(s => s.trim()).filter(s => s),
+                ExcludedStatuses: document.getElementById('excludedStatuses').value.split(',').map(s => s.trim()).filter(s => s),
+                CleanupCreatedDate: document.getElementById('cleanupCreatedDate').value || null,
+                ExcludedCreatedDate: document.getElementById('excludedCreatedDate').value || null,
+                CleanupUpdatedDate: document.getElementById('cleanupUpdatedDate').value || null,
+                ExcludedUpdatedDate: document.getElementById('excludedUpdatedDate').value || null,
+                SprintFilter: document.getElementById('sprintFilter').value.trim() || null,
+                ExcludedSprints: []
+            };
+
+            try {
+                toggleSearchButton(true);
+
+                const response = await fetch('/Cleanup/SearchTasks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(filters)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    displayTasks(result.tasks);
+                } else {
+                    alert('Ошибка при поиске задач: ' + result.error);
+                }
+            } catch (error) {
+                alert('Ошибка сети: ' + error.message);
+            } finally {
+                toggleSearchButton(false);
+            }
+        }
+
+        function displayTasks(tasks) {
+            const taskList = document.getElementById('taskList');
+            const tasksSection = document.getElementById('tasksSection');
+            const tasksCount = document.getElementById('tasksCount');
+
+            taskList.innerHTML = '';
+            selectedTasks.clear();
+
+            console.log('Received tasks:', tasks); // Для отладки
+
+            if (tasks.length === 0) {
+                taskList.innerHTML = '<div class="text-center text-muted">Задачи не найдены</div>';
+            } else {
+                tasks.forEach(task => {
+                    // Используем свойства в camelCase как приходят из JSON
+                    const taskKey = task.key || task.Key;
+                    const taskSummary = task.summary || task.Summary;
+                    const taskStatus = task.status || task.Status;
+                    const taskProject = task.project || task.Project;
+                    const taskCreated = task.created || task.Created;
+                    const taskUpdated = task.updated || task.Updated;
+                    const taskUrl = task.url || task.Url;
+
+                    const taskElement = document.createElement('div');
+                    taskElement.className = 'task-item';
+                    taskElement.innerHTML = `
+                        <div class="form-check">
+                            <input class="form-check-input task-checkbox" type="checkbox" data-key="${taskKey}">
+                            <label class="form-check-label w-100">
+                                <div class="task-key">${taskKey}</div>
+                                <div class="task-summary">${taskSummary}</div>
+                                <div class="task-meta">
+                                    <span class="badge bg-secondary status-badge">${taskStatus}</span>
+                                    <span class="badge bg-info status-badge">${taskProject}</span>
+                                    <span>Создана: ${formatDate(taskCreated)}</span>
+                                    <span>Обновлена: ${formatDate(taskUpdated)}</span>
+                                </div>
+                                <a href="${taskUrl}" target="_blank" class="btn btn-sm btn-outline-primary mt-1">Открыть в JIRA</a>
+                            </label>
+                        </div>
+                    `;
+                    taskList.appendChild(taskElement);
+                });
+
+                // Добавляем обработчики для чекбоксов
+                document.querySelectorAll('.task-checkbox').forEach(checkbox => {
+                    checkbox.addEventListener('change', function() {
+                        const taskKey = this.dataset.key;
+                        if (this.checked) {
+                            selectedTasks.add(taskKey);
+                        } else {
+                            selectedTasks.delete(taskKey);
+                        }
+                        updateProcessButton();
+                    });
+                });
+            }
+
+            tasksCount.textContent = tasks.length;
+            tasksSection.classList.remove('d-none');
+            updateProcessButton();
+        }
+
+        // Вспомогательная функция для форматирования даты
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+
+            try {
+                const date = new Date(dateString);
+                return date.toLocaleDateString();
+            } catch {
+                return dateString;
+            }
+        }
+
+        async function processTasks() {
+            if (selectedTasks.size === 0) {
+                alert('Выберите хотя бы одну задачу для обработки');
+                return;
+            }
+
+            const actionType = document.getElementById('actionType').value;
+            const targetStatus = document.getElementById('targetStatus').value;
+            const resolution = document.getElementById('resolution').value;
+
+            if (actionType === 'transition' && !targetStatus) {
+                alert('Укажите целевой статус для перевода');
+                return;
+            }
+
+            if (!confirm(`Вы уверены, что хотите ${actionType === 'delete' ? 'удалить' : 'перевести'} ${selectedTasks.size} задач?`)) {
+                return;
+            }
+
+            try {
+                toggleProcessButton(true);
+
+                const response = await fetch('/Cleanup/ProcessTasks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        TaskKeys: Array.from(selectedTasks),
+                        ActionType: actionType,
+                        TargetStatus: targetStatus,
+                        Resolution: resolution
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    displayResults(result.results);
+                } else {
+                    alert('Ошибка при обработке задач: ' + result.error);
+                }
+            } catch (error) {
+                alert('Ошибка сети: ' + error.message);
+            } finally {
+                toggleProcessButton(false);
+            }
+        }
+
+        function displayResults(results) {
+            const resultsSection = document.getElementById('resultsSection');
+            const resultsList = document.getElementById('resultsList');
+
+            resultsList.innerHTML = '';
+
+            console.log('Process results:', results); // Для отладки
+
+            if (!results || results.length === 0) {
+                resultsList.innerHTML = '<div class="text-center text-muted">Нет результатов обработки</div>';
+                resultsSection.classList.remove('d-none');
+                return;
+            }
+
+            results.forEach(result => {
+                // Используем свойства в camelCase как приходят из JSON
+                const key = result.key || result.Key;
+                const message = result.message || result.Message;
+                const success = result.success !== undefined ? result.success : result.Success;
+
+                const resultElement = document.createElement('div');
+                resultElement.className = `result-item ${success ? 'result-success' : 'result-error'}`;
+                resultElement.innerHTML = `
+                    <strong>${key || 'Unknown'}</strong>: ${message || 'No message'}
+                `;
+                resultsList.appendChild(resultElement);
+            });
+
+            resultsSection.classList.remove('d-none');
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function updateProcessButton() {
+            const processBtn = document.getElementById('processBtn');
+            processBtn.disabled = selectedTasks.size === 0;
+        }
+
+        function toggleSearchButton(loading) {
+            const searchBtn = document.getElementById('searchBtn');
+            const searchSpinner = document.getElementById('searchSpinner');
+
+            if (loading) {
+                searchBtn.disabled = true;
+                searchSpinner.classList.remove('d-none');
+            } else {
+                searchBtn.disabled = false;
+                searchSpinner.classList.add('d-none');
+            }
+        }
+
+        function toggleProcessButton(loading) {
+            const processBtn = document.getElementById('processBtn');
+            const processSpinner = document.getElementById('processSpinner');
+
+            if (loading) {
+                processBtn.disabled = true;
+                processSpinner.classList.remove('d-none');
+            } else {
+                processBtn.disabled = selectedTasks.size === 0;
+                processSpinner.classList.add('d-none');
+            }
+        }
+    </script>
+}

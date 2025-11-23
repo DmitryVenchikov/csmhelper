@@ -1,67 +1,114 @@
 ﻿@{
-    ViewData["Title"] = "Home Page";
+    ViewData["Title"] = "Портал скрам-мастера";
 }
 
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meeting Timer</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
+<style>
+    /* Стили остаются такими же как в предыдущей версии */
+    .portal-card {
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        border: none;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .portal-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+
+    .card-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+
+    .timer-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .task-card {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+    }
+
+    .stats-card {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+    }
+
+    .portal-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 3rem 0;
+        margin-bottom: 3rem;
+        border-radius: 0 0 30px 30px;
+    }
+
+    .cleanup-card {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        color: white;
+    }
+</style>
+
+<div class="portal-header text-center">
     <div class="container">
-        <h1>Meeting Timer</h1>
+        <h1 class="display-4 mb-3">🎯 Портал скрам-мастера</h1>
+        <p class="lead">Инструменты для эффективного управления скрам-процессами</p>
+    </div>
+</div>
 
-        <!-- Настройки встречи -->
-        <div class="setup-section" id="setupSection">
-            <div class="form-group">
-                <label for="duration">Длительность встречи (минуты):</label>
-                <input type="number" id="duration" min="1" max="180" value="10">
-            </div>
-
-            <div class="form-group">
-                <label for="participants">Количество участников:</label>
-                <input type="number" id="participants" min="1" max="50" value="3">
-            </div>
-
-            <button id="startBtn" class="btn btn-primary">Начать встречу</button>
-        </div>
-
-        <!-- Таймер -->
-        <div class="timer-section" id="timerSection" style="display: none;">
-            <div class="participant-info">
-                Участник <span id="currentParticipant">1</span> из <span id="totalParticipants">3</span>
-            </div>
-
-            <div class="time-info">
-                Время на выступление: <span id="timePerParticipant">03:20</span>
-            </div>
-
-            <div class="timer-display">
-                <div id="timer">03:20</div>
-                <div class="progress-bar">
-                    <div id="progress" class="progress-fill"></div>
+<div class="container">
+    <!-- Основные инструменты -->
+    <div class="row mb-5">
+        <div class="col-md-6 mb-4">
+            <a href="@Url.Action("Index", "Timer")" class="text-decoration-none">
+                <div class="card portal-card timer-card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="card-icon">⏱️</div>
+                        <h3 class="card-title">Таймер скрам-митингов</h3>
+                        <p class="card-text">
+                            Таймер для проведения daily standup, планирования, ретроспектив и других скрам-митингов
+                        </p>
+                        <div class="mt-3">
+                            <span class="btn btn-light">Открыть таймер →</span>
+                        </div>
+                    </div>
                 </div>
-            </div>
-
-            <div class="controls">
-                <button id="addTimeBtn" class="btn btn-secondary">+30 сек</button>
-                <button id="nextParticipantBtn" class="btn btn-warning">Следующий участник</button>
-                <button id="stopBtn" class="btn btn-danger">Завершить</button>
-            </div>
-
-            <div class="status-message" id="statusMessage"></div>
-
-            <div class="meeting-info">
-                <div>Общее время встречи: <span id="totalMeetingTime">10:00</span></div>
-                <div>Оставшееся время встречи: <span id="remainingMeetingTime">10:00</span></div>
-                <div>Осталось участников: <span id="remainingParticipants">3</span></div>
-            </div>
+            </a>
+        </div>
+        <div class="col-md-6 mb-4">
+            <a href="@Url.Action("Index", "Jira")" class="text-decoration-none">
+                <div class="card portal-card task-card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="card-icon">🎯</div>
+                        <h3 class="card-title">Создатель задач JIRA</h3>
+                        <p class="card-text">
+                            Создание связанных задач в JIRA с блокирующими связями между аналитикой, разработкой и тестированием
+                        </p>
+                        <div class="mt-3">
+                            <span class="btn btn-light">Создать задачи →</span>
+                        </div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-4 mb-4">
+            <a href="@Url.Action("Index", "Cleanup")" class="text-decoration-none">
+                <div class="card portal-card cleanup-card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="card-icon">🗑️</div>
+                        <h3 class="card-title">Очистка задач JIRA</h3>
+                        <p class="card-text">
+                            Удаление или перевод статусов задач по фильтрам: проекты, статусы, спринты, даты создания
+                        </p>
+                        <div class="mt-3">
+                            <span class="btn btn-light">Очистить задачи →</span>
+                        </div>
+                    </div>
+                </div>
+            </a>
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-</body>
-</html>
+    <!-- Остальная часть портала остается без изменений -->
+</div>
