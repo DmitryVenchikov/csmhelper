@@ -98,99 +98,127 @@
 </div>
 
 @section Scripts {
+    <script src="~/js/common-ui.js"></script>
+    
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Получаем returnUrl из URL параметров или из sessionStorage
-            const urlParams = new URLSearchParams(window.location.search);
-            let returnUrl = urlParams.get('returnUrl');
-
-            if (!returnUrl) {
-                returnUrl = sessionStorage.getItem('targetPage') || '/Jira';
+        class PasswordManager {
+            constructor() {
+                this._password = null;
+                this._timer = null;
             }
 
-            console.log('Return URL detected:', returnUrl);
+            setPassword(password) {
+                this._password = password;
+                this._timer = setTimeout(() => {
+                    this.clearPassword();
+                    if (document.getElementById('sessionExpiredModal')) {
+                        document.getElementById('sessionExpiredModal').style.display = 'block';
+                    } else {
+                        alert('Сессия истекла. Пожалуйста, войдите снова.');
+                    }
+                }, 4 * 60 * 60 * 1000);
+            }
 
-            document.getElementById('authForm').addEventListener('submit', async function(e) {
-                e.preventDefault();
+            getPassword() { return this._password; }
 
-                const username = document.getElementById('username').value;
-                const password = document.getElementById('password').value;
-
-                if (!username || !password) {
-                    showMessage('Заполните все поля', 'error');
-                    return;
+            clearPassword() {
+                this._password = null;
+                if (this._timer) {
+                    clearTimeout(this._timer);
+                    this._timer = null;
                 }
+                localStorage.removeItem('jiraUsername');
+                localStorage.removeItem('lastLogin');
+            }
+        }
 
+        class SecureJiraAuth {
+            constructor() {
+                this.passwordManager = new PasswordManager();
+            }
+
+            async login(username, password) {
                 try {
-                    showMessage('Выполняется авторизация...', 'warning');
-                    toggleLoginButton(true);
-
-                    const response = await fetch('/Auth/Login', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            username: username,
-                            password: password,
-                            returnUrl: returnUrl
-                        })
+                    const testAuth = btoa(`${username}:${password}`);
+                    const testResponse = await fetch('https://jira.moscow.alfaintra.net/rest/api/2/myself', {
+                        headers: { 
+                            'Authorization': `Basic ${testAuth}`,
+                            'Content-Type': 'application/json'
+                        }
                     });
 
-                    const result = await response.json();
-
-                    if (result.success) {
-                        showMessage('✅ Успешная авторизация! Перенаправление...', 'success');
-
-                        // Очищаем сохраненную страницу
-                        sessionStorage.removeItem('targetPage');
-
-                        // Используем returnUrl из ответа сервера
-                        const redirectUrl = result.returnUrl || returnUrl || '/Jira';
-                        console.log('Redirecting to:', redirectUrl);
-
-                        setTimeout(() => {
-                            window.location.href = redirectUrl;
-                        }, 1500);
-                    } else {
-                        showMessage('❌ ' + (result.error || 'Ошибка авторизации'), 'error');
+                    if (!testResponse.ok) {
+                        throw new Error('Ошибка аутентификации. Проверьте логин, пароль и VPN подключение.');
                     }
+
+                    this.passwordManager.setPassword(password);
+                    localStorage.setItem('jiraUsername', username);
+                    localStorage.setItem('lastLogin', Date.now().toString());
+
+                    return true;
                 } catch (error) {
-                    console.error('Login error:', error);
-                    showMessage('❌ Ошибка сети: ' + error.message, 'error');
-                } finally {
-                    toggleLoginButton(false);
+                    this.passwordManager.clearPassword();
+                    throw error;
                 }
-            });
+            }
+
+            logout() {
+                this.passwordManager.clearPassword();
+                window.location.href = '/Auth/Login';
+            }
+
+            isAuthenticated() {
+                return !!this.passwordManager.getPassword();
+            }
+        }
+
+        // Создаем глобальный экземпляр
+        window.jiraAuth = new SecureJiraAuth();
+
+        // Код для страницы логина
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedUsername = localStorage.getItem('jiraUsername');
+            if (savedUsername) {
+                document.getElementById('username').value = savedUsername;
+            }
         });
 
-        function showMessage(message, type) {
-            const statusElement = document.getElementById('statusMessage');
-            statusElement.textContent = message;
-            statusElement.className = 'alert';
+        document.getElementById('authForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
 
-            if (type === 'success') {
-                statusElement.classList.add('alert-success');
-            } else if (type === 'error') {
-                statusElement.classList.add('alert-danger');
-            } else if (type === 'warning') {
-                statusElement.classList.add('alert-warning');
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            if (!username || !password) {
+                showMessage('Заполните все поля', 'error');
+                return;
             }
 
-            statusElement.classList.remove('d-none');
-        }
+            try {
+                showMessage('Проверка подключения к JIRA...', 'warning');
+                toggleButton('loginBtn', 'loginSpinner', true);
 
-        function toggleLoginButton(loading) {
-            const loginBtn = document.getElementById('loginBtn');
-            const loginSpinner = document.getElementById('loginSpinner');
+                const success = await window.jiraAuth.login(username, password);
 
-            if (loading) {
-                loginBtn.disabled = true;
-                loginSpinner.classList.remove('d-none');
-            } else {
-                loginBtn.disabled = false;
-                loginSpinner.classList.add('d-none');
+                if (success) {
+                    showMessage('✅ Успешная авторизация! Перенаправление...', 'success');
+                    
+                    setTimeout(() => {
+                        window.location.href = '/Jira';
+                    }, 1500);
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                
+                if (error.message.includes('Failed to fetch')) {
+                    showMessage('❌ Не удалось подключиться к JIRA. Проверьте VPN подключение.', 'error');
+                } else {
+                    showMessage('❌ ' + error.message, 'error');
+                }
+            } finally {
+                toggleButton('loginBtn', 'loginSpinner', false);
             }
-        }
+        });
     </script>
+
 }
