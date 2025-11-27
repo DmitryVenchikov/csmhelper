@@ -16,78 +16,12 @@ namespace csmhelper.Controllers
             _logger = logger;
         }
 
-        // Страница создания задач - только для авторизованных
-        public async Task<IActionResult> Index()
+        // Страница создания задач - БЕЗ ПРОВЕРКИ АВТОРИЗАЦИИ на сервере
+        public IActionResult Index()
         {
-            // Проверяем авторизацию
-            if (!IsAuthenticated())
-            {
-                return RedirectToAction("Login", "Auth", new { returnUrl = "/Jira" });
-            }
-
-            var isAuthenticated = await _jiraService.IsAuthenticatedAsync();
-            if (!isAuthenticated)
-            {
-                return RedirectToAction("Login", "Auth", new { returnUrl = "/Jira" });
-            }
-
-            ViewBag.IsAuthenticated = isAuthenticated;
+            // Убираем все проверки авторизации - теперь это делается на фронтенде
             return View();
         }
-
-        [HttpPost]
-        public async Task<IActionResult> CreateTasks([FromBody]TaskCreationModel model)
-        {
-            // Проверяем авторизацию для API запросов
-            if (!IsAuthenticated())
-            {
-                return Json(new TaskCreationResponse
-                {
-                    Success = false,
-                    Error = "Требуется авторизация"
-                });
-            }
-
-            if (!ModelState.IsValid)
-            {
-                return Json(new TaskCreationResponse
-                {
-                    Success = false,
-                    Error = "Неверные данные для создания задач"
-                });
-            }
-
-            try
-            {
-                var result = await _jiraService.CreateLinkedTasksAsync(model);
-
-                // Логируем результат для отладки
-                _logger.LogInformation($"Created {result.TasksCreated} tasks with {result.LinksCreated} links");
-                if (result.Tasks != null)
-                {
-                    foreach (var task in result.Tasks)
-                    {
-                        _logger.LogInformation($"Created task: {task.Key} - {task.Summary} - {task.Url}");
-                    }
-                }
-
-                return Json(result);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при создании задач");
-                return Json(new TaskCreationResponse
-                {
-                    Success = false,
-                    Error = $"Ошибка при создании задач: {ex.Message}"
-                });
-            }
-        }
-
-        private bool IsAuthenticated()
-        {
-            return HttpContext.Session.GetString("IsAuthenticated") == "true";
-        }
+         
     }
-
 }

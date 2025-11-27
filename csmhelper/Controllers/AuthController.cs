@@ -19,117 +19,32 @@ namespace csmhelper.Controllers
         [HttpGet]
         public IActionResult Login(string returnUrl = null)
         {
-            // Логируем полученный returnUrl для отладки
-            Console.WriteLine($"Login page requested with returnUrl: {returnUrl}");
-
-            // Если returnUrl не указан, пробуем получить из sessionStorage через JavaScript
-            if (string.IsNullOrEmpty(returnUrl))
-            {
-                returnUrl = "/Jira"; // значение по умолчанию
-            }
-
+            // Убираем все проверки - просто показываем страницу логина
             ViewData["ReturnUrl"] = returnUrl;
             return View();
         }
 
         [HttpPost]
-        public async Task<IActionResult> Login([FromBody] LoginRequestModel model)
+        public IActionResult Logout()
         {
-            Console.WriteLine($"Login attempt - ReturnUrl: {model.ReturnUrl}");
-
-            if (model == null)
-            {
-                return Json(new AuthResponse
-                {
-                    Success = false,
-                    Error = "Данные не получены"
-                });
-            }
-
-            if (string.IsNullOrWhiteSpace(model.Username) || string.IsNullOrWhiteSpace(model.Password))
-            {
-                return Json(new AuthResponse
-                {
-                    Success = false,
-                    Error = "Логин и пароль обязательны"
-                });
-            }
-
-            try
-            {
-                var success = await _jiraService.AuthenticateAsync(model.Username, model.Password);
-
-                if (success)
-                {
-                    HttpContext.Session.SetString("IsAuthenticated", "true");
-
-                    // Используем returnUrl из запроса или значение по умолчанию
-                    var returnUrl = model.ReturnUrl ?? "/Jira";
-                    Console.WriteLine($"Authentication successful, redirecting to: {returnUrl}");
-
-                    return Json(new AuthResponse
-                    {
-                        Success = true,
-                        Authenticated = true,
-                        Message = "Успешная аутентификация",
-                        ReturnUrl = returnUrl
-                    });
-                }
-                else
-                {
-                    return Json(new AuthResponse
-                    {
-                        Success = false,
-                        Authenticated = false,
-                        Error = "Ошибка аутентификации. Проверьте логин и пароль."
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при аутентификации");
-                return Json(new AuthResponse
-                {
-                    Success = false,
-                    Authenticated = false,
-                    Error = $"Ошибка аутентификации: {ex.Message}"
-                });
-            }
-        }
-
-        public class LoginRequestModel
-        {
-            public string Username { get; set; }
-            public string Password { get; set; }
-            public string ReturnUrl { get; set; }
-        }
-    
-        [HttpPost]
-        public async Task<IActionResult> Logout()
-        {
-            await _jiraService.LogoutAsync();
-            HttpContext.Session.Remove("IsAuthenticated");
+            // Очищаем сессию если что-то было
+            HttpContext.Session.Clear();
             return Json(new AuthResponse
             {
                 Success = true,
-                Authenticated = false,
-                Message = "Успешный выход из системы"
+                Message = "Сессия очищена"
             });
         }
 
         [HttpGet]
-        public async Task<IActionResult> AuthStatus()
+        public IActionResult AuthStatus()
         {
-            var isAuthenticated = await _jiraService.IsAuthenticatedAsync();
-            var sessionAuth = HttpContext.Session.GetString("IsAuthenticated") == "true";
-
+            // Всегда возвращаем false - авторизация теперь на фронтенде
             return Json(new AuthResponse
             {
                 Success = true,
-                Authenticated = isAuthenticated && sessionAuth
+                Authenticated = false // Frontend will handle its own auth
             });
         }
     }
-    
-  
 }

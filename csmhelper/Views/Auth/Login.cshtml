@@ -99,7 +99,7 @@
 
 @section Scripts {
     <script src="~/js/common-ui.js"></script>
-    
+
     <script>
         class PasswordManager {
             constructor() {
@@ -141,7 +141,7 @@
                 try {
                     const testAuth = btoa(`${username}:${password}`);
                     const testResponse = await fetch('https://jira.moscow.alfaintra.net/rest/api/2/myself', {
-                        headers: { 
+                        headers: {
                             'Authorization': `Basic ${testAuth}`,
                             'Content-Type': 'application/json'
                         }
@@ -164,7 +164,8 @@
 
             logout() {
                 this.passwordManager.clearPassword();
-                window.location.href = '/Auth/Login';
+                // Больше не перенаправляем на Auth/Login - остаемся на той же странице
+                window.location.reload();
             }
 
             isAuthenticated() {
@@ -176,14 +177,20 @@
         window.jiraAuth = new SecureJiraAuth();
 
         // Код для страницы логина
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
+            // Если уже авторизован, перенаправляем на главную
+            if (window.jiraAuth.isAuthenticated()) {
+                window.location.href = '/Jira';
+                return;
+            }
+
             const savedUsername = localStorage.getItem('jiraUsername');
             if (savedUsername) {
                 document.getElementById('username').value = savedUsername;
             }
         });
 
-        document.getElementById('authForm').addEventListener('submit', async function(e) {
+        document.getElementById('authForm').addEventListener('submit', async function (e) {
             e.preventDefault();
 
             const username = document.getElementById('username').value;
@@ -202,14 +209,14 @@
 
                 if (success) {
                     showMessage('✅ Успешная авторизация! Перенаправление...', 'success');
-                    
+
                     setTimeout(() => {
                         window.location.href = '/Jira';
                     }, 1500);
                 }
             } catch (error) {
                 console.error('Login error:', error);
-                
+
                 if (error.message.includes('Failed to fetch')) {
                     showMessage('❌ Не удалось подключиться к JIRA. Проверьте VPN подключение.', 'error');
                 } else {
@@ -220,5 +227,4 @@
             }
         });
     </script>
-
 }

@@ -61,77 +61,88 @@
     }
 
     .task-list-container {
-    max-height: 400px;
-    overflow-y: auto;
-    border: 1px solid #dee2e6;
-    border-radius: 5px;
-    padding: 10px;
-}
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 10px;
+    }
 
-.created-task-item {
-    display: flex;
-    align-items: center;
-    padding: 10px;
-    margin-bottom: 8px;
-    background: #f8f9fa;
-    border-radius: 5px;
-    border-left: 4px solid #28a745;
-    transition: all 0.3s ease;
-}
+    .created-task-item {
+        display: flex;
+        align-items: center;
+        padding: 10px;
+        margin-bottom: 8px;
+        background: #f8f9fa;
+        border-radius: 5px;
+        border-left: 4px solid #28a745;
+        transition: all 0.3s ease;
+    }
 
-.created-task-item:hover {
-    background: #e9ecef;
-    transform: translateX(5px);
-}
+        .created-task-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
 
-.task-type-badge {
-    font-size: 0.7em;
-    padding: 3px 8px;
-    margin-right: 10px;
-    border-radius: 12px;
-}
+    .task-type-badge {
+        font-size: 0.7em;
+        padding: 3px 8px;
+        margin-right: 10px;
+        border-radius: 12px;
+    }
 
-.task-info {
-    flex: 1;
-}
+    .task-info {
+        flex: 1;
+    }
 
-.task-key {
-    font-weight: bold;
-    color: #1976d2;
-    text-decoration: none;
-}
+    .task-key {
+        font-weight: bold;
+        color: #1976d2;
+        text-decoration: none;
+    }
 
-.task-key:hover {
-    text-decoration: underline;
-}
+        .task-key:hover {
+            text-decoration: underline;
+        }
 
-.task-summary {
-    font-size: 0.9em;
-    color: #495057;
-    margin-top: 2px;
-}
+    .task-summary {
+        font-size: 0.9em;
+        color: #495057;
+        margin-top: 2px;
+    }
 
-.task-actions {
-    margin-left: 10px;
-}
+    .task-actions {
+        margin-left: 10px;
+    }
 
-.copy-link-btn {
-    background: none;
-    border: none;
-    color: #6c757d;
-    cursor: pointer;
-    padding: 5px;
-    border-radius: 3px;
-}
+    .copy-link-btn {
+        background: none;
+        border: none;
+        color: #6c757d;
+        cursor: pointer;
+        padding: 5px;
+        border-radius: 3px;
+    }
 
-.copy-link-btn:hover {
-    background: #e9ecef;
-    color: #495057;
-}
+        .copy-link-btn:hover {
+            background: #e9ecef;
+            color: #495057;
+        }
 
-.analysis-badge { background-color: #17a2b8; color: white; }
-.dev-badge { background-color: #28a745; color: white; }
-.test-badge { background-color: #ffc107; color: #212529; }
+    .analysis-badge {
+        background-color: #17a2b8;
+        color: white;
+    }
+
+    .dev-badge {
+        background-color: #28a745;
+        color: white;
+    }
+
+    .test-badge {
+        background-color: #ffc107;
+        color: #212529;
+    }
 </style>
 
 <div class="container">
@@ -139,7 +150,7 @@
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 <span class="status-indicator status-authenticated"></span>
-                <span id="authStatusText">Вы авторизованы в JIRA</span>
+                <span id="authStatusText">Авторизация управляется на клиенте</span>
             </div>
             <button class="btn btn-sm btn-outline-secondary" id="logoutBtn">
                 <i class="bi bi-box-arrow-right"></i> Выйти
@@ -235,7 +246,6 @@
 
             <div id="statusMessage" class="alert d-none mt-3" role="alert"></div>
 
-            <!-- Замените существующую секцию createdTasks на эту: -->
             <div id="createdTasks" class="d-none mt-4">
                 <div class="card border-success">
                     <div class="card-header bg-success text-white">
@@ -267,8 +277,85 @@
 
 @section Scripts {
     <script src="~/js/common-ui.js"></script>
-    
+
     <script>
+        class PasswordManager {
+            constructor() {
+                this._password = null;
+                this._timer = null;
+            }
+
+            setPassword(password) {
+                this._password = password;
+                this._timer = setTimeout(() => {
+                    this.clearPassword();
+                    this.showSessionExpiredMessage();
+                }, 4 * 60 * 60 * 1000);
+            }
+
+            getPassword() {
+                return this._password;
+            }
+
+            clearPassword() {
+                this._password = null;
+                if (this._timer) {
+                    clearTimeout(this._timer);
+                    this._timer = null;
+                }
+                localStorage.removeItem('jiraUsername');
+                localStorage.removeItem('lastLogin');
+            }
+
+            showSessionExpiredMessage() {
+                if (document.getElementById('sessionExpiredModal')) {
+                    document.getElementById('sessionExpiredModal').style.display = 'block';
+                } else {
+                    alert('Сессия истекла. Пожалуйста, войдите снова.');
+                }
+            }
+        }
+
+        class SecureJiraAuth {
+            constructor() {
+                this.passwordManager = new PasswordManager();
+            }
+
+            async login(username, password) {
+                try {
+                    const testAuth = btoa(`${username}:${password}`);
+                    const testResponse = await fetch('https://jira.moscow.alfaintra.net/rest/api/2/myself', {
+                        headers: {
+                            'Authorization': `Basic ${testAuth}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (!testResponse.ok) {
+                        throw new Error('Ошибка аутентификации. Проверьте логин, пароль и VPN подключение.');
+                    }
+
+                    this.passwordManager.setPassword(password);
+                    localStorage.setItem('jiraUsername', username);
+                    localStorage.setItem('lastLogin', Date.now().toString());
+
+                    return true;
+                } catch (error) {
+                    this.passwordManager.clearPassword();
+                    throw error;
+                }
+            }
+
+            logout() {
+                this.passwordManager.clearPassword();
+                window.location.reload();
+            }
+
+            isAuthenticated() {
+                return !!this.passwordManager.getPassword();
+            }
+        }
+
         class JiraApiClient {
             constructor(authManager) {
                 this.authManager = authManager;
@@ -343,16 +430,16 @@
             const taskList = document.getElementById('taskList');
             const createdTasks = document.getElementById('createdTasks');
             const tasksSummary = document.getElementById('tasksSummary');
-            
+
             taskList.innerHTML = '';
-            
+
             if (tasks.length === 0) {
                 taskList.innerHTML = '<div class="text-center text-muted">Нет созданных задач</div>';
             } else {
                 tasks.forEach(task => {
                     const taskElement = document.createElement('div');
                     taskElement.className = 'created-task-item';
-                    
+
                     let badgeClass = 'task-type-badge ';
                     if (task.type && task.type.includes('ANALYSIS')) {
                         badgeClass += 'analysis-badge';
@@ -363,33 +450,33 @@
                     } else {
                         badgeClass += 'bg-secondary';
                     }
-                    
+
                     taskElement.innerHTML = `
-                        <span class="${badgeClass}">${task.type || 'TASK'}</span>
-                        <div class="task-info">
-                            <a href="${task.url}" target="_blank" class="task-key">
-                                ${task.key}
-                            </a>
-                            <div class="task-summary">${task.summary || 'Без названия'}</div>
-                        </div>
-                        <div class="task-actions">
-                            <button class="copy-link-btn" title="Скопировать ссылку" data-url="${task.url}">
-                                📋
-                            </button>
-                        </div>
-                    `;
+                                <span class="${badgeClass}">${task.type || 'TASK'}</span>
+                                <div class="task-info">
+                                    <a href="${task.url}" target="_blank" class="task-key">
+                                        ${task.key}
+                                    </a>
+                                    <div class="task-summary">${task.summary || 'Без названия'}</div>
+                                </div>
+                                <div class="task-actions">
+                                    <button class="copy-link-btn" title="Скопировать ссылку" data-url="${task.url}">
+                                        📋
+                                    </button>
+                                </div>
+                            `;
                     taskList.appendChild(taskElement);
                 });
 
                 document.querySelectorAll('.copy-link-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
+                    btn.addEventListener('click', function () {
                         const url = this.getAttribute('data-url');
                         copyToClipboard(url);
                         showMessage('Ссылка скопирована в буфер обмена!', 'success');
                     });
                 });
             }
-            
+
             tasksSummary.textContent = `Создано задач: ${tasksCreated}, блокирующих связей: ${linksCreated}`;
             createdTasks.classList.remove('d-none');
             createdTasks.scrollIntoView({ behavior: 'smooth' });
@@ -431,25 +518,25 @@
 
         function showPasswordModal() {
             const modalHtml = `
-                <div id="passwordModal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;">
-                    <div style="background:white;padding:2rem;border-radius:10px;max-width:400px;width:100%;">
-                        <h3>Продолжение сессии</h3>
-                        <p>Введите пароль JIRA для пользователя <strong>${localStorage.getItem('jiraUsername')}</strong></p>
-                        <input type="password" id="sessionPassword" class="form-control" placeholder="Пароль">
-                        <div class="d-flex gap-2 mt-3">
-                            <button onclick="continueSession()" class="btn btn-primary">Продолжить</button>
-                            <button onclick="logout()" class="btn btn-secondary">Выйти</button>
+                        <div id="passwordModal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;">
+                            <div style="background:white;padding:2rem;border-radius:10px;max-width:400px;width:100%;">
+                                <h3>Продолжение сессии</h3>
+                                <p>Введите пароль JIRA для пользователя <strong>${localStorage.getItem('jiraUsername')}</strong></p>
+                                <input type="password" id="sessionPassword" class="form-control" placeholder="Пароль">
+                                <div class="d-flex gap-2 mt-3">
+                                    <button onclick="continueSession()" class="btn btn-primary">Продолжить</button>
+                                    <button onclick="logout()" class="btn btn-secondary">Выйти</button>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
-            `;
+                    `;
             document.body.insertAdjacentHTML('beforeend', modalHtml);
         }
 
         async function continueSession() {
             const password = document.getElementById('sessionPassword').value;
             const username = localStorage.getItem('jiraUsername');
-            
+
             if (!password) {
                 alert('Введите пароль');
                 return;
@@ -468,8 +555,9 @@
         }
 
         // Инициализация страницы
-        document.addEventListener('DOMContentLoaded', function() {
-            // Создаем API клиент
+        document.addEventListener('DOMContentLoaded', function () {
+            // Создаем глобальные экземпляры
+            window.jiraAuth = new SecureJiraAuth();
             window.jiraApi = new JiraApiClient(window.jiraAuth);
 
             // Проверяем аутентификацию
@@ -482,6 +570,12 @@
                 }
             }
 
+            // Обновляем статус авторизации в UI
+            if (window.jiraAuth.isAuthenticated()) {
+                const username = localStorage.getItem('jiraUsername');
+                document.getElementById('authStatusText').textContent = `Вы авторизованы как: ${username}`;
+            }
+
             // Инициализируем визуализацию потока задач
             updateTaskFlow();
 
@@ -491,11 +585,11 @@
             });
 
             // Обработчик кнопки "Скопировать ссылки"
-            document.getElementById('copyLinksBtn').addEventListener('click', function() {
+            document.getElementById('copyLinksBtn').addEventListener('click', function () {
                 const taskLinks = Array.from(document.querySelectorAll('.task-key'))
                     .map(link => link.href)
                     .join('\n');
-                
+
                 if (taskLinks) {
                     copyToClipboard(taskLinks);
                     showMessage('Все ссылки скопированы в буфер обмена!', 'success');
@@ -505,7 +599,7 @@
             });
 
             // Обработчик кнопки "Создать еще задачи"
-            document.getElementById('createMoreBtn').addEventListener('click', function() {
+            document.getElementById('createMoreBtn').addEventListener('click', function () {
                 document.getElementById('createdTasks').classList.add('d-none');
                 document.getElementById('taskForm').reset();
                 document.getElementById('createAnalysis').checked = true;
@@ -517,13 +611,13 @@
             });
 
             // Обработчик выхода
-            document.getElementById('logoutBtn').addEventListener('click', function() {
+            document.getElementById('logoutBtn').addEventListener('click', function () {
                 window.jiraAuth.logout();
             });
         });
 
         // Обработчик формы создания задач
-        document.getElementById('taskForm').addEventListener('submit', async function(e) {
+        document.getElementById('taskForm').addEventListener('submit', async function (e) {
             e.preventDefault();
 
             if (!window.jiraAuth.isAuthenticated()) {
@@ -553,7 +647,7 @@
                 toggleButton('createTasksBtn', 'createSpinner', true);
 
                 const createdTasks = [];
-                
+
                 if (createAnalysis) {
                     const analysisTask = await window.jiraApi.createIssue(projectKey, summary, description, 'ANALYSIS');
                     createdTasks.push({
@@ -587,14 +681,14 @@
                 let linksCreated = 0;
                 for (let i = 0; i < createdTasks.length - 1; i++) {
                     const linkSuccess = await window.jiraApi.createIssueLink(
-                        createdTasks[i].key, 
+                        createdTasks[i].key,
                         createdTasks[i + 1].key
                     );
                     if (linkSuccess) linksCreated++;
                 }
 
                 showMessage(`✅ Успешно создано ${createdTasks.length} задач с ${linksCreated} блокирующими связями!`, 'success');
-                
+
                 if (createdTasks.length > 0) {
                     displayCreatedTasks(createdTasks, createdTasks.length, linksCreated);
                 }
