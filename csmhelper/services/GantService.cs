@@ -27,8 +27,13 @@ namespace csmhelper.services
             var username = ctx.Session.GetString("JiraUsername");
             var password = ctx.Session.GetString("JiraPassword");
 
+            _logger.LogInformation($"Получены учетные данные: username={username}, password={(password != null ? "***" : "null")}");
+
             if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+            {
+                _logger.LogWarning("Сессия Jira пуста");
                 return Fail("Сессия Jira истекла. Пожалуйста, войдите заново.");
+            }
 
             // ── 2. Build employees ────────────────────────────────
             var employees = new List<GantEmployee>();
@@ -36,7 +41,10 @@ namespace csmhelper.services
             {
                 var role = ParseRole(e.Role);
                 if (role == null)
+                {
+                    _logger.LogWarning($"Неизвестная роль: {e.Role}");
                     return Fail($"Неизвестная роль: {e.Role}");
+                }
 
                 employees.Add(new GantEmployee
                 {
@@ -57,6 +65,7 @@ namespace csmhelper.services
             List<RawJiraTask> rawTasks;
             try
             {
+                _logger.LogInformation($"Запрос к Jira: server={request.JiraServer}, projects={string.Join(",", request.Projects)}");
                 rawTasks = await FetchJiraTasksAsync(
                     request.JiraServer, username, password,
                     request.Projects, request.VerifySsl, request.Schedule);
@@ -67,13 +76,18 @@ namespace csmhelper.services
                 return Fail($"Ошибка получения задач из Jira: {ex.Message}");
             }
 
+            _logger.LogInformation($"Получено задач из Jira: {rawTasks.Count}");
+
             if (!rawTasks.Any())
+            {
+                _logger.LogWarning("Нет задач, подходящих под критерии фильтрации");
                 return new GantGenerateResponse
                 {
                     Success = true,
                     Stats = new GantStats(),
                     Scheduled = new(),
                 };
+            }
 
             // ── 4. Build schedule ─────────────────────────────────
             var builder = new ScheduleBuilder(employees, request.Schedule);
@@ -106,8 +120,8 @@ namespace csmhelper.services
         // ─── Jira REST ────────────────────────────────────────────
 
         private async Task<List<RawJiraTask>> FetchJiraTasksAsync(
-            string server, string username, string password,
-            List<string> projects, bool verifySsl, GantScheduleSettings settings)
+    string server, string username, string password,
+    List<string> projects, bool verifySsl, GantScheduleSettings settings)
         {
             var handler = new HttpClientHandler
             {
@@ -130,34 +144,63 @@ namespace csmhelper.services
                          "issuelinks,customfield_10007,customfield_10372";
 
             var url = $"/rest/api/2/search?jql={Uri.EscapeDataString(jql)}&fields={fields}&maxResults=200";
+
+            _logger.LogInformation($"JQL запрос: {jql}");
+            _logger.LogInformation($"URL: {url}");
+
             var response = await client.GetAsync(url);
 
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync();
+                _logger.LogError($"Jira API вернул {response.StatusCode}: {body}");
                 throw new Exception($"Jira API вернул {response.StatusCode}: {body[..Math.Min(200, body.Length)]}");
             }
 
             var json = await response.Content.ReadAsStringAsync();
+            _logger.LogInformation($"Получен JSON длиной {json.Length} символов");
+
             var result = JsonConvert.DeserializeObject<JiraSearchResult>(json)
                          ?? throw new Exception("Пустой ответ от Jira API");
 
             var tasks = new List<RawJiraTask>();
 
+            _logger.LogInformation($"Найдено задач в Jira: {result.Issues?.Count ?? 0}");
+
             foreach (var issue in result.Issues ?? new())
             {
-                var taskType = DetectTaskType(issue.Fields?.Summary ?? "");
-                if (taskType == null) continue;
+                var summary = issue.Fields?.Summary ?? "";
+                var taskType = DetectTaskType(summary);
+
+                _logger.LogDebug($"=== Обработка задачи {issue.Key} ===");
+                _logger.LogDebug($"  Название: {summary}");
+                _logger.LogDebug($"  Тип задачи: {taskType ?? "не определен"}");
+
+                if (taskType == null)
+                {
+                    _logger.LogDebug($"  Пропущена: нет метки типа");
+                    continue;
+                }
 
                 var sp = GetStoryPoints(issue.Fields);
-                if (sp == null) continue;
+                if (sp == null)
+                {
+                    _logger.LogDebug($"  Пропущена: нет Story Points");
+                    continue;
+                }
+                _logger.LogDebug($"  Story Points: {sp}");
 
-                var links = ParseLinks(issue.Fields);
+                _logger.LogDebug($"  Парсинг связей:");
+                var links = ParseLinks(issue.Fields, _logger);
+
+                _logger.LogDebug($"  Результат парсинга связей:");
+                _logger.LogDebug($"    Блокирует: [{string.Join(",", links.Blocks)}]");
+                _logger.LogDebug($"    Заблокирована: [{string.Join(",", links.BlockedBy)}]");
 
                 tasks.Add(new RawJiraTask
                 {
                     Key = issue.Key ?? "",
-                    Summary = issue.Fields?.Summary ?? "",
+                    Summary = summary,
                     StoryPoints = sp.Value,
                     DurationWorkHours = settings.SpToWorkHoursConverted(sp.Value),
                     DurationWorkDays = settings.SpToWorkDays(sp.Value),
@@ -173,8 +216,11 @@ namespace csmhelper.services
                     Blocks = links.Blocks,
                     BlockedBy = links.BlockedBy,
                 });
+
+                _logger.LogDebug($"  Задача добавлена");
             }
 
+            _logger.LogInformation($"Отфильтровано задач: {tasks.Count}");
             return tasks;
         }
 
@@ -191,35 +237,91 @@ namespace csmhelper.services
         private static double? GetStoryPoints(JiraIssueFields? fields)
         {
             if (fields?.CustomField10372 == null) return null;
-            if (double.TryParse(fields.CustomField10372.ToString(), out var v) && v > 0)
-                return v;
+
+            try
+            {
+                if (fields.CustomField10372 is double d && d > 0)
+                    return d;
+                if (fields.CustomField10372 is string s && double.TryParse(s, out var v) && v > 0)
+                    return v;
+                if (fields.CustomField10372 is long l && l > 0)
+                    return l;
+                if (fields.CustomField10372 is int i && i > 0)
+                    return i;
+            }
+            catch (Exception ex)
+            {
+                // Логируем ошибку
+                Console.WriteLine($"Error parsing SP: {ex.Message}");
+            }
             return null;
         }
 
-        private static (List<string> Blocks, List<string> BlockedBy) ParseLinks(JiraIssueFields? fields)
+        private static (List<string> Blocks, List<string> BlockedBy) ParseLinks(JiraIssueFields? fields, ILogger logger)
         {
             var blocks = new List<string>();
             var blockedBy = new List<string>();
 
-            if (fields?.IssueLinks == null) return (blocks, blockedBy);
+            if (fields?.IssueLinks == null)
+            {
+                logger?.LogDebug("    Нет связей");
+                return (blocks, blockedBy);
+            }
+
+            logger?.LogDebug($"    Всего связей: {fields.IssueLinks.Count}");
 
             foreach (var link in fields.IssueLinks)
             {
-                var typeName = link.Type?.Name?.ToLowerInvariant() ?? "";
-                if (!typeName.Contains("block")) continue;
+                var typeName = link.Type?.Name?.ToLowerInvariant() ?? "unknown";
+                var outwardKey = link.OutwardIssue?.Key ?? "none";
+                var inwardKey = link.InwardIssue?.Key ?? "none";
 
-                if (link.OutwardIssue?.Key != null)
-                    blocks.Add(link.OutwardIssue.Key);
-                else if (link.InwardIssue?.Key != null)
-                    blockedBy.Add(link.InwardIssue.Key);
+                logger?.LogDebug($"    Связь: тип='{typeName}', outward={outwardKey}, inward={inwardKey}");
+
+                if (typeName.Contains("block"))
+                {
+                    if (link.OutwardIssue?.Key != null)
+                    {
+                        blocks.Add(link.OutwardIssue.Key);
+                        logger?.LogDebug($"      -> {fields.Summary} БЛОКИРУЕТ {link.OutwardIssue.Key}");
+                    }
+                    if (link.InwardIssue?.Key != null)
+                    {
+                        blockedBy.Add(link.InwardIssue.Key);
+                        logger?.LogDebug($"      -> {fields.Summary} ЗАБЛОКИРОВАНА {link.InwardIssue.Key}");
+                    }
+                }
+                else if (typeName.Contains("depends") || typeName.Contains("relates"))
+                {
+                    if (link.OutwardIssue?.Key != null)
+                    {
+                        blockedBy.Add(link.OutwardIssue.Key);
+                        logger?.LogDebug($"      -> {fields.Summary} зависит от {link.OutwardIssue.Key}");
+                    }
+                    if (link.InwardIssue?.Key != null)
+                    {
+                        blocks.Add(link.InwardIssue.Key);
+                        logger?.LogDebug($"      -> {link.InwardIssue.Key} зависит от {fields.Summary}");
+                    }
+                }
+                else
+                {
+                    logger?.LogDebug($"      -> Неизвестный тип связи: {typeName}");
+                }
             }
+
+            logger?.LogDebug($"    ИТОГ: блокирует=[{string.Join(",", blocks)}], заблокирована=[{string.Join(",", blockedBy)}]");
 
             return (blocks, blockedBy);
         }
-
         private static int PriorityWeight(string? p) => p switch
         {
-            "Highest" => 1, "High" => 2, "Medium" => 3, "Low" => 4, "Lowest" => 5, _ => 3
+            "Highest" => 1,
+            "High" => 2,
+            "Medium" => 3,
+            "Low" => 4,
+            "Lowest" => 5,
+            _ => 3
         };
 
         private static DateTime? TryParseDate(string? s)

@@ -38,19 +38,20 @@ namespace csmhelper.Models
 
     public class GantScheduleSettings
     {
-        public int SpBase { get; set; } = 21;
-        public int SprintHoursTotal { get; set; } = 80;
-        public double AgilePercent { get; set; } = 15;
         public int TaskTransitionLagMinutes { get; set; } = 60;
 
-        public double SpToWorkHours => SprintHoursTotal * (1 - AgilePercent / 100) / SpBase;
-        public double SpToTotalHours => (double)SprintHoursTotal / SpBase;
+        private const int SpBase = 21;
+        private const int SprintHoursTotal = 80;
+        private const double AgilePercent = 15;
 
-        public double SpToWorkDays(double sp) => sp / SpBase * 10;
-        public double SpToWorkHoursConverted(double sp) => sp * SpToWorkHours;
-        public double SpToTotalHoursConverted(double sp) => sp * SpToTotalHours;
+        public double SpToWorkHours => (SprintHoursTotal * (1 - AgilePercent / 100)) / SpBase; // 3.238
+
+        public double SpToWorkDays(double sp) => (sp / SpBase) * 10; // 2 SP = 0.95 дней
+
+        public double SpToWorkHoursConverted(double sp) => sp * SpToWorkHours; // 2 SP = 6.5 часов
+
+        public double SpToTotalHoursConverted(double sp) => sp * (SprintHoursTotal / SpBase); // 2 SP = 7.6 часов
     }
-
     // ─── Response ─────────────────────────────────────────────────
 
     public class GantGenerateResponse
@@ -85,6 +86,7 @@ namespace csmhelper.Models
         public double StoryPoints { get; set; }
         public double DurationWorkHours { get; set; }
         public double DurationWorkDays { get; set; }
+        public double DurationTotalHours { get; set; }  
         public string TaskType { get; set; } = "";
         public string? AssignedResource { get; set; }
         public string? AssignmentReason { get; set; }

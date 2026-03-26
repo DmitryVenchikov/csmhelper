@@ -21,7 +21,10 @@ namespace csmhelper.Controllers
         public IActionResult Index()
         {
             if (!IsAuthenticated())
+            {
+                _logger.LogWarning("Попытка доступа к Gant без авторизации");
                 return RedirectToAction("Login", "Auth", new { returnUrl = "/Gant" });
+            }
 
             return View();
         }
@@ -30,13 +33,20 @@ namespace csmhelper.Controllers
         public async Task<IActionResult> Generate([FromBody] GantGenerateRequest request)
         {
             if (!IsAuthenticated())
+            {
+                _logger.LogWarning("Попытка вызова Generate без авторизации");
                 return Json(new GantGenerateResponse { Success = false, Error = "Требуется авторизация" });
+            }
 
             if (request == null)
+            {
+                _logger.LogWarning("Получен пустой запрос");
                 return Json(new GantGenerateResponse { Success = false, Error = "Некорректные данные запроса" });
+            }
 
             try
             {
+                _logger.LogInformation($"Получен запрос на генерацию. Проекты: {string.Join(",", request.Projects)}");
                 var result = await _gantService.GenerateAsync(request);
                 return Json(result);
             }

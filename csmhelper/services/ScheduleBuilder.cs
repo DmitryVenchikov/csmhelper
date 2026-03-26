@@ -33,6 +33,7 @@ namespace csmhelper.services
         /// </summary>
         public (DateTime Start, DateTime End) FindAvailableSlot(double durationHours, DateTime earliestStart, int lagMinutes)
         {
+            // Убеждаемся, что earliestStart в рабочее время
             var current = EnsureWorkingTime(earliestStart);
             var durationMinutes = durationHours * 60;
 
@@ -40,22 +41,25 @@ namespace csmhelper.services
             {
                 var candidateEnd = _calc.AddWorkMinutes(current, durationMinutes);
 
-                var conflict = _bookedSlots.FirstOrDefault(s => !(candidateEnd <= s.Start || current >= s.End));
+                // Проверяем пересечения с забронированными слотами
+                var conflict = _bookedSlots.FirstOrDefault(s =>
+                    !(candidateEnd <= s.Start || current >= s.End));
+
                 if (conflict == default)
                     return (current, candidateEnd);
 
-                // Move past the conflicting slot + lag
+                // Перемещаемся после конфликтного слота + лаг
                 current = _calc.AddWorkMinutes(conflict.End, lagMinutes);
+                current = EnsureWorkingTime(current);
             }
 
-            // Fallback: schedule after all booked slots
+            // Fallback
             var latest = _bookedSlots.Any()
                 ? _calc.AddWorkMinutes(_bookedSlots.Max(s => s.End), lagMinutes)
                 : EnsureWorkingTime(DateTime.Now);
-
+            latest = EnsureWorkingTime(latest);
             return (latest, _calc.AddWorkMinutes(latest, durationMinutes));
         }
-
         private DateTime EnsureWorkingTime(DateTime dt)
         {
             // Delegate to calculator by attempting to add 0 minutes
@@ -111,72 +115,153 @@ namespace csmhelper.services
         {
             StartDate = DateTime.Now;
 
-            // Sort by priority, then by blockers (tasks with no blockers first)
+            Console.WriteLine("\n" + new string('=', 80));
+            Console.WriteLine("=== НАЧАЛО ПОСТРОЕНИЯ РАСПИСАНИЯ ===");
+            Console.WriteLine(new string('=', 80));
+
+            // Выводим информацию о зависимостях
+            Console.WriteLine("\n=== Исходные задачи ===");
+            foreach (var task in tasks)
+            {
+                Console.WriteLine($"{task.Key}:");
+                Console.WriteLine($"  SP={task.StoryPoints}, тип={task.TaskType}");
+                Console.WriteLine($"  Блокирует: [{string.Join(",", task.Blocks)}]");
+                Console.WriteLine($"  Заблокирована: [{string.Join(",", task.BlockedBy)}]");
+                Console.WriteLine($"  Длительность: {task.DurationWorkHours:F1} часов ({task.DurationWorkDays:F1} дней)");
+            }
+
+            // Сортируем задачи: сначала те, у которых нет блокировок
             var ordered = tasks
-                .OrderBy(t => t.PriorityWeight)
-                .ThenBy(t => t.BlockedBy.Count)
+                .OrderBy(t => t.BlockedBy.Count)  // Сначала без блокировок
+                .ThenBy(t => t.PriorityWeight)
                 .ToList();
 
             var scheduled = new Dictionary<string, GantScheduledTask>();
             var notScheduled = new List<RawJiraTask>();
 
-            foreach (var task in ordered)
+            // Несколько проходов для учета зависимостей
+            var remainingTasks = new List<RawJiraTask>(ordered);
+            var maxPasses = ordered.Count * 2;
+            var pass = 0;
+
+            while (remainingTasks.Any() && pass < maxPasses)
             {
-                var suitable = _employees
-                    .Where(e => e.CanHandle(task.TaskType))
-                    .Select(e => e.Name)
-                    .ToList();
+                pass++;
+                var progressMade = false;
+                var tasksThisPass = remainingTasks.ToList();
 
-                if (!suitable.Any())
-                {
-                    notScheduled.Add(task);
-                    continue;
-                }
+                Console.WriteLine($"\n--- Проход {pass}, осталось задач: {remainingTasks.Count} ---");
 
-                // Determine earliest start: after all blockers finish + lag
-                var earliestStart = StartDate;
-                foreach (var blockerKey in task.BlockedBy)
+                foreach (var task in tasksThisPass)
                 {
-                    if (scheduled.TryGetValue(blockerKey, out var blocker))
+                    // Проверяем, все ли блокирующие задачи уже запланированы
+                    var allBlockersScheduled = true;
+                    var latestBlockerEnd = StartDate;
+
+                    Console.WriteLine($"\n  Проверка {task.Key}:");
+                    Console.WriteLine($"    Заблокирована задачами: [{string.Join(",", task.BlockedBy)}]");
+
+                    if (!task.BlockedBy.Any())
                     {
-                        var afterBlocker = blocker.ScheduledEnd.AddMinutes(_settings.TaskTransitionLagMinutes);
-                        if (afterBlocker > earliestStart) earliestStart = afterBlocker;
+                        Console.WriteLine($"    Нет блокировок, можно планировать");
                     }
+
+                    foreach (var blockerKey in task.BlockedBy)
+                    {
+                        if (scheduled.TryGetValue(blockerKey, out var blocker))
+                        {
+                            var afterBlocker = blocker.ScheduledEnd.AddMinutes(_settings.TaskTransitionLagMinutes);
+                            if (afterBlocker > latestBlockerEnd)
+                                latestBlockerEnd = afterBlocker;
+                            Console.WriteLine($"    - Блокер {blockerKey} запланирован, закончит {blocker.ScheduledEnd:HH:mm}, после лага {afterBlocker:HH:mm}");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"    - Блокер {blockerKey} еще НЕ запланирован");
+                            allBlockersScheduled = false;
+                            break;
+                        }
+                    }
+
+                    if (!allBlockersScheduled)
+                    {
+                        Console.WriteLine($"    -> {task.Key} пропущен (есть незапланированные блокеры)");
+                        continue;
+                    }
+
+                    // Находим подходящих исполнителей
+                    var suitable = _employees
+                        .Where(e => e.CanHandle(task.TaskType))
+                        .Select(e => e.Name)
+                        .ToList();
+
+                    if (!suitable.Any())
+                    {
+                        Console.WriteLine($"    -> {task.Key} пропущен (нет подходящих исполнителей для {task.TaskType})");
+                        notScheduled.Add(task);
+                        remainingTasks.Remove(task);
+                        continue;
+                    }
+
+                    // Выбираем наименее загруженного исполнителя
+                    var resourceName = suitable
+                        .OrderBy(n => _calendars[n].TotalBookedHoursFrom(StartDate))
+                        .First();
+
+                    var calendar = _calendars[resourceName];
+
+                    Console.WriteLine($"    earliestStart = {latestBlockerEnd:HH:mm}");
+                    Console.WriteLine($"    resource = {resourceName}");
+                    Console.WriteLine($"    duration = {task.DurationWorkHours:F1} часов");
+
+                    // Находим слот с учетом блокировок
+                    var (slotStart, slotEnd) = calendar.FindAvailableSlot(
+                        task.DurationWorkHours,
+                        latestBlockerEnd,
+                        _settings.TaskTransitionLagMinutes);
+
+                    Console.WriteLine($"    -> запланирован на {slotStart:dd.MM HH:mm} - {slotEnd:dd.MM HH:mm}");
+
+                    calendar.BookSlot(slotStart, slotEnd);
+
+                    var st = new GantScheduledTask
+                    {
+                        Key = task.Key,
+                        Summary = task.Summary,
+                        StoryPoints = task.StoryPoints,
+                        DurationWorkHours = task.DurationWorkHours,
+                        DurationWorkDays = task.DurationWorkDays,
+                        DurationTotalHours = task.DurationTotalHours,
+                        TaskType = task.TaskType,
+                        AssignedResource = resourceName,
+                        AssignmentReason = $"Наименее загруженный {GetRoleDisplay(_calendars[resourceName].Role)}",
+                        ScheduledStart = slotStart,
+                        ScheduledEnd = slotEnd,
+                        Priority = task.Priority,
+                        DueDate = task.DueDate,
+                        Link = task.Link,
+                        Status = task.Status,
+                        BlockedBy = task.BlockedBy,
+                        Blocks = task.Blocks,
+                    };
+
+                    scheduled[task.Key] = st;
+                    ScheduledTasks.Add(st);
+                    remainingTasks.Remove(task);
+                    progressMade = true;
                 }
 
-                // Pick least loaded suitable resource
-                var resourceName = suitable
-                    .OrderBy(n => _calendars[n].TotalBookedHoursFrom(StartDate))
-                    .First();
-
-                var calendar = _calendars[resourceName];
-                var (slotStart, slotEnd) = calendar.FindAvailableSlot(
-                    task.DurationWorkHours, earliestStart, _settings.TaskTransitionLagMinutes);
-
-                calendar.BookSlot(slotStart, slotEnd);
-
-                var st = new GantScheduledTask
+                if (!progressMade)
                 {
-                    Key = task.Key,
-                    Summary = task.Summary,
-                    StoryPoints = task.StoryPoints,
-                    DurationWorkHours = task.DurationWorkHours,
-                    DurationWorkDays = task.DurationWorkDays,
-                    TaskType = task.TaskType,
-                    AssignedResource = resourceName,
-                    AssignmentReason = $"Наименее загруженный {GetRoleDisplay(_calendars[resourceName].Role)}",
-                    ScheduledStart = slotStart,
-                    ScheduledEnd = slotEnd,
-                    Priority = task.Priority,
-                    DueDate = task.DueDate,
-                    Link = task.Link,
-                    Status = task.Status,
-                    BlockedBy = task.BlockedBy,
-                    Blocks = task.Blocks,
-                };
+                    Console.WriteLine("\n!!! Нет прогресса на проходе, выходим !!!");
+                    break;
+                }
+            }
 
-                scheduled[task.Key] = st;
-                ScheduledTasks.Add(st);
+            // Добавляем незапланированные задачи (если есть)
+            foreach (var task in remainingTasks)
+            {
+                notScheduled.Add(task);
             }
 
             if (ScheduledTasks.Any())
@@ -186,67 +271,155 @@ namespace csmhelper.services
                 TotalDurationDays = (CompletionDate.Value - StartDate).TotalDays;
             }
 
+            Console.WriteLine("\n=== ИТОГОВОЕ РАСПИСАНИЕ ===");
+            foreach (var task in ScheduledTasks.OrderBy(t => t.ScheduledStart))
+            {
+                Console.WriteLine($"{task.Key}: {task.ScheduledStart:dd.MM HH:mm} - {task.ScheduledEnd:dd.MM HH:mm} (длит: {task.DurationWorkHours:F1}ч)");
+            }
+            Console.WriteLine(new string('=', 80));
+
             ComputeCriticalPath(scheduled);
             return ScheduledTasks;
         }
-
         private void ComputeCriticalPath(Dictionary<string, GantScheduledTask> scheduled)
         {
             if (!scheduled.Any()) return;
 
-            // Critical path: chain of tasks ending at CompletionDate with highest total duration
-            // Simple approach: tasks that have no slack (end time == project completion or
-            // are on the longest dependency chain)
+            // Build dependency graph
+            var graph = new Dictionary<string, List<string>>();      // task -> tasks it blocks
+            var reverseGraph = new Dictionary<string, List<string>>(); // task -> tasks it depends on
 
-            // Build a map of "finish → tasks"
-            // Walk backwards from last-ending tasks through blockedBy chains
-            var maxEnd = scheduled.Values.Max(t => t.ScheduledEnd);
+            foreach (var task in scheduled.Values)
+            {
+                graph[task.Key] = new List<string>();
+                reverseGraph[task.Key] = new List<string>();
+            }
 
-            // Start from tasks that end latest
-            var endingLast = scheduled.Values
-                .Where(t => t.ScheduledEnd == maxEnd)
+            foreach (var task in scheduled.Values)
+            {
+                foreach (var blocksKey in task.Blocks)
+                {
+                    if (graph.ContainsKey(blocksKey))
+                    {
+                        graph[task.Key].Add(blocksKey);
+                        reverseGraph[blocksKey].Add(task.Key);
+                    }
+                }
+                foreach (var blockedByKey in task.BlockedBy)
+                {
+                    if (graph.ContainsKey(blockedByKey))
+                    {
+                        graph[blockedByKey].Add(task.Key);
+                        reverseGraph[task.Key].Add(blockedByKey);
+                    }
+                }
+            }
+
+            // Find end tasks (tasks that don't block anyone)
+            var endTasksKeys = new HashSet<string>();
+            foreach (var task in scheduled.Values)
+            {
+                if (!graph[task.Key].Any())
+                    endTasksKeys.Add(task.Key);
+            }
+
+            // If no end tasks, take all tasks
+            if (!endTasksKeys.Any())
+                endTasksKeys = new HashSet<string>(scheduled.Keys);
+
+            // Critical path algorithm: start from end tasks and go backwards
+            var criticalKeys = new HashSet<string>(endTasksKeys);
+            var changed = true;
+
+            while (changed)
+            {
+                changed = false;
+                foreach (var task in scheduled.Values)
+                {
+                    if (criticalKeys.Contains(task.Key))
+                        continue;
+
+                    // Check if any task that depends on this task is critical
+                    if (graph[task.Key].Any(dep => criticalKeys.Contains(dep)))
+                    {
+                        criticalKeys.Add(task.Key);
+                        changed = true;
+                    }
+                }
+            }
+
+            // Also add tasks that are on the path from start to critical tasks
+            changed = true;
+            while (changed)
+            {
+                changed = false;
+                foreach (var task in scheduled.Values)
+                {
+                    if (criticalKeys.Contains(task.Key))
+                        continue;
+
+                    // Check if any task that this task depends on is critical
+                    if (reverseGraph[task.Key].Any(pred => criticalKeys.Contains(pred)))
+                    {
+                        criticalKeys.Add(task.Key);
+                        changed = true;
+                    }
+                }
+            }
+
+            // Build critical path in order
+            var criticalTasks = scheduled.Values
+                .Where(t => criticalKeys.Contains(t.Key))
                 .ToList();
 
-            var criticalSet = new HashSet<string>();
-            var queue = new Queue<GantScheduledTask>(endingLast);
+            // Try to order them by dependencies
+            var orderedPath = new List<GantScheduledTask>();
+            var visited = new HashSet<string>();
+            var queue = new Queue<GantScheduledTask>();
+
+            // Start with tasks that have no dependencies
+            var startTasks = criticalTasks.Where(t => !reverseGraph[t.Key].Any(pred => criticalKeys.Contains(pred))).ToList();
+            foreach (var task in startTasks)
+                queue.Enqueue(task);
 
             while (queue.Any())
             {
                 var task = queue.Dequeue();
-                if (criticalSet.Contains(task.Key)) continue;
-                criticalSet.Add(task.Key);
+                if (visited.Contains(task.Key)) continue;
+                visited.Add(task.Key);
+                orderedPath.Add(task);
 
-                foreach (var blockerKey in task.BlockedBy)
-                {
-                    if (scheduled.TryGetValue(blockerKey, out var blocker))
-                        queue.Enqueue(blocker);
-                }
+                // Add tasks that depend on current task
+                var nextTasks = criticalTasks
+                    .Where(t => reverseGraph[t.Key].Contains(task.Key) && !visited.Contains(t.Key))
+                    .OrderBy(t => t.ScheduledStart)
+                    .ToList();
+                foreach (var next in nextTasks)
+                    queue.Enqueue(next);
             }
 
-            // If critical set is tiny (just 1-2 tasks), widen it:
-            // also include any task whose delay would push the completion date
-            if (criticalSet.Count <= 2 && scheduled.Count > 2)
+            // If we couldn't order all, just sort by start time
+            if (orderedPath.Count != criticalTasks.Count)
             {
-                // Include tasks that are on the resource's longest chain
-                var byResource = scheduled.Values.GroupBy(t => t.AssignedResource);
-                foreach (var group in byResource)
-                {
-                    var sorted = group.OrderBy(t => t.ScheduledStart).ToList();
-                    if (sorted.Any())
-                        criticalSet.Add(sorted.Last().Key);
-                }
+                orderedPath = criticalTasks.OrderBy(t => t.ScheduledStart).ToList();
             }
 
-            CriticalPath = scheduled.Values
-                .Where(t => criticalSet.Contains(t.Key))
-                .OrderBy(t => t.ScheduledStart)
-                .ToList();
+            CriticalPath = orderedPath;
 
             foreach (var t in CriticalPath)
                 t.IsCritical = true;
 
+            // Calculate statistics
             CriticalSp = CriticalPath.Sum(t => t.StoryPoints);
             CriticalHours = CriticalPath.Sum(t => t.DurationWorkHours);
+
+            // Add transition lags between critical tasks
+            var lagHours = _settings.TaskTransitionLagMinutes / 60.0;
+            for (int i = 0; i < CriticalPath.Count - 1; i++)
+            {
+                CriticalHours += lagHours;
+            }
+
             CriticalDays = CriticalHours / 8.0;
         }
 

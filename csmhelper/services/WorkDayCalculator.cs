@@ -21,7 +21,11 @@ namespace csmhelper.services
         {
             if (!IsWorkday(dt)) return false;
             var t = TimeOnly.FromDateTime(dt);
+
+            // Check lunch break
             if (t >= _employee.LunchStart && t < _employee.LunchEnd) return false;
+
+            // Check working hours
             return t >= _employee.WorkStart && t < _employee.WorkEnd;
         }
 
@@ -32,21 +36,24 @@ namespace csmhelper.services
 
             while (remaining > 0)
             {
-                if (!IsWorkingHours(current))
+                // Skip non-working time
+                while (!IsWorkingHours(current))
                 {
                     current = MoveToNextWorkingMoment(current);
-                    continue;
                 }
 
                 var dayEnd = current.Date.Add(_employee.WorkEnd.ToTimeSpan());
                 var lunchStart = current.Date.Add(_employee.LunchStart.ToTimeSpan());
                 var lunchEnd = current.Date.Add(_employee.LunchEnd.ToTimeSpan());
 
+                // Calculate available minutes in current day
                 var availableMinutes = (dayEnd - current).TotalMinutes;
 
-                // Subtract lunch if it falls within remaining window
+                // Subtract lunch if it falls within the remaining window
                 if (current < lunchStart && dayEnd > lunchEnd)
+                {
                     availableMinutes -= (_employee.LunchEnd.Hour - _employee.LunchStart.Hour) * 60;
+                }
 
                 if (remaining <= availableMinutes)
                 {
@@ -73,14 +80,20 @@ namespace csmhelper.services
 
             var t = TimeOnly.FromDateTime(dt);
 
+            // Before work starts
             if (t < _employee.WorkStart)
                 return dt.Date.Add(_employee.WorkStart.ToTimeSpan());
 
+            // After work ends
             if (t >= _employee.WorkEnd)
                 return NextWorkdayStart(dt.Date.AddDays(1));
 
-            // Must be in lunch
-            return dt.Date.Add(_employee.LunchEnd.ToTimeSpan());
+            // During lunch break
+            if (t >= _employee.LunchStart && t < _employee.LunchEnd)
+                return dt.Date.Add(_employee.LunchEnd.ToTimeSpan());
+
+            // Already in working hours
+            return dt;
         }
 
         private DateTime NextWorkdayStart(DateTime from)
