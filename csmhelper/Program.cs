@@ -9,6 +9,7 @@ builder.Services.AddHttpContextAccessor();
 
 // Регистрация сервисов
 builder.Services.AddScoped<IJiraService, JiraService>();
+builder.Services.AddScoped<IGantService, GantService>();
 
 // Настройка сессий
 builder.Services.AddSession(options =>
