@@ -1,0 +1,25 @@
+=== `GET /Auth/AuthStatus` Проверка статуса аутентификации
+
+
+==== Назначение
+Метод используется фронтендом и навигационными экранами для проверки, авторизован ли пользователь в Jira прямо сейчас. Метод считает пользователя авторизованным, только если *оба* флага истинны:
+
+* в `Session` лежат непустые `JiraUsername` и `JiraPassword` (проверяет `IJiraService.IsAuthenticatedAsync()`);
+* в `Session["IsAuthenticated"]` лежит строка `"true"`.
+
+Это нужно, чтобы рассинхрон между двумя сторонами (например, отдельный browser-tab после `Logout`) приводил к ответу «не авторизован».
+
+==== Схема работы
+[plantuml, "GET_AuthStatus","png"]
+----------
+include::GET_AuthStatus.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает запрос `GET /Auth/AuthStatus`
+. Система вызывает `IJiraService.IsAuthenticatedAsync()`:
+.. Сервис читает из `Session` ключи `JiraUsername` и `JiraPassword`
+.. Если оба значения непустые, сервис возвращает `true`, иначе `false`
+. Система читает `Session["IsAuthenticated"]` и сравнивает со строкой `"true"`
+. Система формирует JSON `{ Success = true, Authenticated = (jiraAuth && sessionAuth) }`
+. Система возвращает ответ с HTTP-кодом = 200 OK

@@ -1,0 +1,47 @@
+=== Требования к логированию
+
+Сервис использует *два* независимых канала логирования:
+
+. Стандартный `ILogger<T>` ASP.NET Core (см. `Logging` в `appsettings.json`). Уровни: `csmhelper = Debug`, `Default = Debug`, `Microsoft = Warning`, `Microsoft.Hosting.Lifetime = Information`. Этот канал предназначен для эксплуатационных логов и должен идти в стандартный `stdout`/`stderr` контейнера.
+. Файловый лог в каталоге `logs/` рядом с исполняемым файлом. Используется в:
+.. `AuthController` — `userlogs.txt`, `failed_logins.txt`, `daily_stats_*.txt`, `monthly_stats_*.txt`, `failed_stats_*.txt`. Подробнее см. `db.adoc`
+.. `TimerController` — `timer_access.log`, `timer_errors.log`, `page_stats_*.txt`, `timer_custom.log`, плюс дублирование части записей в общий `userlogs.txt`
+
+==== Что обязательно логируется через `ILogger<T>`
+
+[cols="1,2"]
+|===
+|Источник |Сообщение
+
+|`AuthController.TrackUserLogin`
+|`LogInformation("Tracked successful login for user: {Username}", username)`
+
+|`AuthController.TrackFailedLogin`
+|`LogWarning("Tracked failed login attempt for user: {Username}, Reason: {Reason}")`
+
+|`AuthController.UpdateFailedLoginStats`
+|`LogWarning("Multiple failed login attempts for user: {Username}")` (при `>= 5` попыток)
+
+|`AuthController.Login`
+|`LogError(ex, "Ошибка при аутентификации")` при исключении
+
+|`JiraController.CreateTasks`
+|`LogInformation($"Created {N} tasks with {M} links")`, далее по одной записи на каждую созданную задачу; при исключении — `LogError(ex, "Ошибка при создании задач")`
+
+|`CleanupController.SearchTasks` / `ProcessTasks`
+|`LogError` при исключении
+
+|`GantController.Generate`
+|`LogWarning("Попытка вызова Generate без авторизации")`, `LogInformation` со списком проектов; `LogError(ex, "Ошибка при генерации диаграммы Ганта")` при исключении
+
+|`GantService.GenerateAsync`
+|`LogInformation` по шагам (логин, JQL, число найденных задач), `LogWarning` для пустой сессии и неизвестной роли, `LogError` для ошибок Jira
+
+|`TimerController.LogAccess` / `LogError`
+|`LogInformation` / `LogError` параллельно с записью в файл
+
+|===
+
+==== Чувствительные данные
+
+Пароль пользователя Jira (`JiraPassword`) хранится в `Session` ASP.NET Core (см. `db.adoc` и ADR в `decisions.adoc`). При логировании пароль *не* выводится в текст: `GantService.GenerateAsync` логирует `password=***` вместо реального значения. Все остальные участки кода обращаются к `JiraPassword` только для построения Basic-auth заголовка и не пишут его в логи.

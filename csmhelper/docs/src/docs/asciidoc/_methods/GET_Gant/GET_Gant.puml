@@ -1,0 +1,20 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant session as "HttpContext.Session"
+participant view as "Views/Gant/Index.cshtml"
+end box
+
+client->api ++: GET /Gant
+api->session: GetString("IsAuthenticated")
+alt не "true"
+    api->api: LogWarning("Попытка доступа\nк Gant без авторизации")
+    api-->client: 302 -> /Auth/Login?returnUrl=/Gant
+else "true"
+    api->view ++: render
+    view-->api --: HTML
+    api-->client --: 200 OK + HTML
+end
+
+@enduml

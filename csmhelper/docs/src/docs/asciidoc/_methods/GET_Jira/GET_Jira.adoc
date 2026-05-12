@@ -1,0 +1,20 @@
+=== `GET /Jira` Страница создания связанных задач
+
+
+==== Назначение
+Защищённая страница, отдающая UI создания тройки связанных задач Jira (`Аналитика → Разработка → Тестирование`). Если пользователь не аутентифицирован, выполняется редирект на `Auth/Login` c `returnUrl=/Jira`.
+
+==== Схема работы
+[plantuml, "GET_Jira","png"]
+----------
+include::GET_Jira.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает запрос `GET /Jira`
+. Система проверяет локальный флаг `Session["IsAuthenticated"] == "true"`
+.. Если флаг отсутствует — Система выполняет `RedirectToAction("Login", "Auth", new { returnUrl = "/Jira" })` с HTTP-кодом = 302
+. Система вызывает `IJiraService.IsAuthenticatedAsync()` (проверка наличия `JiraUsername`/`JiraPassword` в `Session`)
+.. Если сервис вернул `false` — Система выполняет редирект на `Auth/Login` с `returnUrl=/Jira` и HTTP-кодом = 302
+. Система кладёт в `ViewBag.IsAuthenticated = true` и рендерит представление `Views/Jira/Index.cshtml`
+. Система возвращает HTML с HTTP-кодом = 200 OK

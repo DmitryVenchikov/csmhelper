@@ -1,0 +1,16 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant logs_fs as "logs/timer_errors.log\nlogs/userlogs.txt"
+participant view as "Views/Shared/Error.cshtml"
+end box
+
+client->api ++: GET /Timer/Error
+api->api: errorId = Activity.Current?.Id\n            ?? TraceIdentifier
+api->logs_fs: append ERROR (timer_errors.log,\n userlogs.txt)
+api->view ++: render(ErrorViewModel{RequestId})
+view-->api --: HTML
+api-->client --: 200 OK + HTML\n(Cache-Control: no-store)
+
+@enduml

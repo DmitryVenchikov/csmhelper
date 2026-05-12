@@ -1,0 +1,37 @@
+=== `POST /Cleanup/SearchTasks` Поиск задач по фильтру (JQL)
+
+
+==== Назначение
+Метод выполняет поиск задач Jira по составному фильтру. На вход принимается `CleanupFilterModel` (проекты, исключённые проекты, статусы, исключённые статусы, дата создания и обновления — `<` и `>=`, спринт, исключённые спринты). Контроллер передаёт фильтр в `IJiraService.SearchTasksAsync`, который собирает строку JQL и шлёт `GET /rest/api/2/search?jql=...&maxResults=1000` с расширенным списком полей. Возвращается список `JiraTask` для UI таблицы Cleanup.
+
+==== Схема работы
+[plantuml, "POST_Cleanup_SearchTasks","png"]
+----------
+include::POST_Cleanup_SearchTasks.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает запрос `POST /Cleanup/SearchTasks` с телом `CleanupFilterModel`
+.. Если `Session["IsAuthenticated"] != "true"` — Система возвращает `200 OK` с `{ success = false, error = "Требуется авторизация" }`
+. Система вызывает `IJiraService.SearchTasksAsync(filters)`:
+.. Сервис проверяет аутентификацию через `IsAuthenticatedAsync()`. При неуспехе бросает `UnauthorizedAccessException("Требуется аутентификация")`
+.. Сервис формирует Basic-auth заголовок из `Session.JiraUsername`/`JiraPassword`
+.. Сервис вызывает `BuildJqlQuery(filters)`:
+... Если `filters.Projects` непустой — добавляется `project in (...)`
+... Если `filters.ExcludedProjects` непустой — добавляется `project not in (...)`
+... Если `filters.Statuses` непустой — добавляется `status in (...)`
+... Если `filters.ExcludedStatuses` непустой — добавляется `status not in (...)`
+... Если `filters.CleanupCreatedDate` задан — добавляется `created < "<yyyy-MM-dd>"`
+... Если `filters.ExcludedCreatedDate` задан — добавляется `created >= "<yyyy-MM-dd>"`
+... Если `filters.CleanupUpdatedDate` задан — добавляется `updated < "<yyyy-MM-dd>"`
+... Если `filters.ExcludedUpdatedDate` задан — добавляется `updated >= "<yyyy-MM-dd>"`
+... Если `filters.SprintFilter` непустой — добавляется `Sprint = "..."`, иначе добавляется `Sprint IS EMPTY`
+... Если `filters.ExcludedSprints` непустой — добавляется `Sprint not in (...)`
+... Все блоки склеиваются `AND`
+.. Сервис формирует список запрашиваемых полей: `key, summary, status, created, updated, project, issuetype, assignee, reporter, priority, labels, resolution, duedate, timeestimate, timespent, customfield_10007, customfield_10008`
+.. Сервис шлёт `GET /rest/api/2/search?jql=<urlencoded>&fields=<...>&maxResults=1000`
+.. Если ответ не 2xx — сервис бросает `Exception("Ошибка при поиске задач: <code>")`
+.. Иначе сервис десериализует `JiraSearchResult` и маппит каждый `JiraIssue` в `JiraTask` (с `Url = https://jira.moscow.alfaintra.net/browse/<Key>`, спринтом из `customfield_10007` через `GetSprintName`, эпик-линком из `customfield_10008` и значениями по умолчанию для отсутствующих полей)
+. Если в обработке возникло исключение — Система пишет `LogError` и возвращает `200 OK` с `{ success = false, error = "Ошибка при поиске задач: <message>" }`
+. Система формирует ответ `{ success = true, tasks = [...] }` с HTTP-кодом = 200 OK
+. Система отправляет ответ клиенту

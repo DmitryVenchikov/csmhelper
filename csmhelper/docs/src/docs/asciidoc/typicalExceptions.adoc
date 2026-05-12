@@ -1,0 +1,79 @@
+=== Типовые ошибки
+
+В сервисе `csmhelper` *нет* единой бизнес-классификации ошибок (типа `INVALID_ID`, `UNRESOLVED_REF` и т. д.). Все методы возвращают HTTP-код = 200 OK с JSON-телом, в котором поле `Success`/`success` равно `false`, а в полях `Error` или `error` лежит свободный текст ошибки на русском языке. Подробное описание текста по каждому методу — см. соответствующие `_methods/<METHOD>/<METHOD>.adoc`.
+
+==== Сводка типовых текстов ошибок
+
+[cols="1,2,2"]
+|===
+|Метод |Условие |Текст ошибки
+
+|`POST /Auth/Login`
+|`model == null`
+|`"Данные не получены"`
+
+|`POST /Auth/Login`
+|`Username` или `Password` пусты
+|`"Логин и пароль обязательны"`
+
+|`POST /Auth/Login`
+|Jira ответил неуспешно
+|`"Ошибка аутентификации. Проверьте логин и пароль."`
+
+|`POST /Auth/Login`
+|Исключение
+|`"Ошибка аутентификации: <message>"`
+
+|`POST /Jira/CreateTasks`, `POST /Cleanup/SearchTasks`, `POST /Cleanup/ProcessTasks`, `POST /Gant/Generate`
+|`Session["IsAuthenticated"] != "true"`
+|`"Требуется авторизация"`
+
+|`POST /Jira/CreateTasks`
+|`ModelState.IsValid == false`
+|`"Неверные данные для создания задач"`
+
+|`POST /Jira/CreateTasks`
+|Исключение в `JiraService.CreateLinkedTasksAsync`
+|`"Ошибка при создании задач: <message>"`
+
+|`POST /Cleanup/SearchTasks`
+|Исключение
+|`"Ошибка при поиске задач: <message>"`
+
+|`POST /Cleanup/ProcessTasks`
+|Исключение
+|`"Ошибка при обработке задач: <message>"`
+
+|`POST /Cleanup/ProcessTasks`
+|Не найден переход (transition)
+|`"Не найден переход в статус '<targetStatus>'"`, в `errorDetails` — список доступных переходов
+
+|`POST /Gant/Generate`
+|`request == null`
+|`"Некорректные данные запроса"`
+
+|`POST /Gant/Generate`
+|Сессия Jira пуста
+|`"Сессия Jira истекла. Пожалуйста, войдите заново."`
+
+|`POST /Gant/Generate`
+|Неизвестная роль
+|`"Неизвестная роль: <role>"`
+
+|`POST /Gant/Generate`
+|Сотрудников нет
+|`"Добавьте хотя бы одного сотрудника."`
+
+|`POST /Gant/Generate`
+|Ошибка Jira REST
+|`"Ошибка получения задач из Jira: <message>"`
+
+|`POST /Gant/Generate`
+|Иное исключение
+|`"Ошибка: <message>"`
+
+|`GET /auth/stats`, `GET /timer/stats`, `GET /timer/custom/{id}`
+|Любое исключение
+|`{ error = <ex.Message> }`
+
+|===

@@ -1,0 +1,23 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant logs_fs as "logs/*.log\nlogs/userlogs.txt\nlogs/page_stats_<today>.txt"
+end box
+
+client->api ++: GET /timer/custom/{id}
+api->logs_fs: LogAccess("CustomTimer", ...)\n-> timer_access.log, userlogs.txt
+api->logs_fs: TrackPageVisit("CustomTimer/<id>")\n-> page_stats_<today>.txt
+opt первое посещение за день
+    api->logs_fs: PAGE_FIRST_VISIT -> userlogs.txt
+end
+api->logs_fs: append CUSTOM_TIMER\n-> timer_custom.log
+
+alt success
+    api-->client: 200 OK\n{timerId, message="Timer <id> loaded"}
+else exception
+    api->logs_fs: LogError("CustomTimer", ...)
+    api-->client --: 200 OK\n{error: <message>}
+end
+
+@enduml

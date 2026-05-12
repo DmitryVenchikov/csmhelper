@@ -1,0 +1,51 @@
+=== `POST /Gant/Generate` Генерация диаграммы Ганта
+
+
+==== Назначение
+Метод собирает диаграмму Ганта по задачам Jira: тянет открытые задачи указанных проектов, фильтрует их по типу (`[TEST]`, `[DEV BACK]`, `[DEV FRONT]`, `[SA]`) и наличию Story Points, распределяет по сотрудникам с учётом рабочих окон, обеда, выходных и блокирующих связей, считает критический путь и утилизацию ресурсов.
+
+Алгоритм планирования (см. `ScheduleBuilder`) — однопроходный list-scheduling: задачи сортируются по числу блокирующих предшественников и приоритету, на каждом проходе планируются те, у которых *все* блокеры уже запланированы; на каждый ресурс выбирается наименее загруженный подходящий по роли сотрудник, слот ищется через `WorkDayCalculator`, который умеет «класть» рабочие минуты на календарь с обедами и выходными.
+
+Метод всегда возвращает HTTP-код = 200 OK; результат — `GantGenerateResponse` с полями `Success`, `Error`, `Stats`, `Scheduled`, `CriticalPathKeys`, `Utilization`.
+
+==== Схема работы
+[plantuml, "POST_Gant_Generate","png"]
+----------
+include::POST_Gant_Generate.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает запрос `POST /Gant/Generate` с телом `GantGenerateRequest`
+.. Если `Session["IsAuthenticated"] != "true"` — Система пишет `LogWarning("Попытка вызова Generate без авторизации")` и возвращает `200 OK` с `{ Success = false, Error = "Требуется авторизация" }`
+.. Если тело не удалось десериализовать (`request == null`) — Система пишет `LogWarning("Получен пустой запрос")` и возвращает `200 OK` с `{ Success = false, Error = "Некорректные данные запроса" }`
+. Система вызывает `IGantService.GenerateAsync(request)`:
+.. Сервис читает `JiraUsername` и `JiraPassword` из `Session`. Если хотя бы одно пусто — возвращает `{ Success = false, Error = "Сессия Jira истекла. Пожалуйста, войдите заново." }`
+.. Сервис строит `List<GantEmployee>` из `request.Employees`:
+... Для каждого сотрудника `ParseRole(role)` → `Tester | Analyst | BackendDev | FrontendDev`. Если роль не распознана — возвращает `{ Success = false, Error = "Неизвестная роль: <role>" }`
+... Время `WorkStart`, `WorkEnd`, `LunchStart`, `LunchEnd` парсится из строк `HH:mm`; если строка некорректна — fallback `09:00`
+... Если итоговый список сотрудников пуст — возвращает `{ Success = false, Error = "Добавьте хотя бы одного сотрудника." }`
+.. Сервис обращается к Jira через одноразовый `HttpClient` (`SslPolicyErrors` игнорируются, если `request.VerifySsl == false`):
+... Формирует JQL `project in (<projects>) AND status not in ("Closed", "Done", "Resolved")`
+... Запрашивает `GET /rest/api/2/search?jql=<urlencoded>&fields=key,summary,status,priority,created,duedate,assignee,issuelinks,customfield_10007,customfield_10372&maxResults=200`
+... Если ответ не 2xx — бросает исключение, которое контроллер ловит и возвращает `200 OK` с `{ Success = false, Error = "Ошибка получения задач из Jira: <message>" }`
+.. Для каждого `JiraIssue`:
+... `DetectTaskType(summary)` ищет в `summary` подстроку `[TEST]` / `[DEV BACK]` / `[DEV FRONT]` / `[SA]`. Если ни одной нет — задача *пропускается*
+... `GetStoryPoints(fields)` пытается достать число из `customfield_10372` (поддерживаются `double`, `string` с `double.TryParse`, `long`, `int`; ноль/отрицательное считаются отсутствием SP). Если SP не найден — задача *пропускается*
+... `ParseLinks(fields)` собирает блокирующие связи: связи с `type.name` содержащим `block` дают `Blocks` (по `outwardIssue.Key`) и `BlockedBy` (по `inwardIssue.Key`); связи с `depends`/`relates` — наоборот
+... Считаются длительности: `DurationWorkHours = sp * (80*(1-0.15)/21) ≈ sp * 3.238`, `DurationWorkDays = sp / 21 * 10`, `DurationTotalHours = sp * 80/21`
+... `Priority` мапится в вес через `PriorityWeight`: `Highest=1, High=2, Medium=3, Low=4, Lowest=5`
+... Создаётся `RawJiraTask` со всеми полями (включая `Link = <server>/browse/<key>`)
+.. Если итоговый список `RawJiraTask` пуст — возвращается `{ Success = true, Stats = new GantStats(), Scheduled = [] }`
+.. Сервис создаёт `ScheduleBuilder(employees, request.Schedule)` и вызывает `Build(rawTasks)`:
+... Задачи сортируются `OrderBy(BlockedBy.Count).ThenBy(PriorityWeight)`
+... В цикле проходов (максимум `2 * tasks.Count`) каждая задача проверяется: «все ли блокеры уже запланированы?». Если нет — задача переносится на следующий проход. Если за проход не запланировано ни одной — цикл прерывается, остальные считаются «не запланированы»
+... Среди сотрудников выбираются те, кто `CanHandle(task.TaskType)` (роль соответствует типу задачи). Если подходящих нет — задача отправляется в `notScheduled`
+... Из подходящих выбирается наименее загруженный `OrderBy(_calendars[name].TotalBookedHoursFrom(StartDate))`
+... `ResourceCalendar.FindAvailableSlot(durationHours, earliestStart, lagMinutes)` ищет первое свободное окно длиной `durationHours`, начиная не ранее `earliestStart` (это `max(StartDate, последний из блокеров + lag)`); пересечения с уже забронированными слотами обходятся за `<= 200` итераций. `WorkDayCalculator.AddWorkMinutes` правильно «прыгает» через обед, конец рабочего дня и выходные
+... Найденный слот бронируется, задача добавляется в список `ScheduledTasks` с `AssignmentReason = "Наименее загруженный <Тестировщик|Аналитик|Backend|Frontend>"`
+.. После цикла планирования `CompletionDate = max(ScheduledEnd)`, `TotalDurationHours/Days = CompletionDate - StartDate`
+.. `ComputeCriticalPath(scheduled)` строит граф зависимостей и из задач-листьев (тех, кто никого не блокирует) поднимается вверх, помечая попавшие на путь задачи как `IsCritical = true`. Затем добавляются предки этих задач. `CriticalPath` упорядочивается обходом от стартовых задач, при невозможности — `OrderBy(ScheduledStart)`. Считаются `CriticalSp = sum(SP)`, `CriticalHours = sum(DurationWorkHours) + (count-1)*lag`, `CriticalDays = CriticalHours / 8`
+.. `GetUtilization()` группирует `ScheduledTasks` по `AssignedResource` и суммирует `DurationWorkHours`
+.. Сервис формирует `GantGenerateResponse` с `Stats { TotalTasks, ScheduledTasks, NotScheduled, TotalStoryPoints, TotalWorkHours, CompletionDate, TotalDurationHours, TotalDurationDays, CriticalPathCount, CriticalSp }`, `Scheduled`, `CriticalPathKeys`, `Utilization`
+. Если в обработке возникло исключение — Система пишет `LogError("Ошибка при генерации диаграммы Ганта")` и возвращает `200 OK` с `{ Success = false, Error = "Ошибка: <message>" }`
+. Система отправляет ответ клиенту

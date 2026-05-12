@@ -1,0 +1,19 @@
+=== `POST /Auth/Logout` Выход из сессии Jira
+
+
+==== Назначение
+Метод сбрасывает состояние аутентификации текущего пользователя: удаляет учётные данные Jira и флаг `IsAuthenticated` из `Session`. Метод не делает запросов к самому Jira (Jira не имеет понятия серверной сессии для Basic-auth), он только очищает локальное состояние ASP.NET Core.
+
+==== Схема работы
+[plantuml, "POST_Logout","png"]
+----------
+include::POST_Logout.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает запрос `POST /Auth/Logout`
+. Система вызывает `IJiraService.LogoutAsync()`:
+.. Сервис удаляет из `Session` ключи `JiraUsername` и `JiraPassword`
+. Система удаляет из `Session` ключ `IsAuthenticated`
+. Система формирует ответ `{ Success = true, Authenticated = false, Message = "Успешный выход из системы" }` с HTTP-кодом = 200 OK
+. Система отправляет ответ клиенту

@@ -1,0 +1,111 @@
+=== Схемы DTO и моделей
+
+Сервис не работает с JSON Schema / OpenAPI генерацией — вместо этого сериализация описана через C#-классы в каталогах `Models/` и `services/`. Ниже — карта основных DTO и доменных типов.
+
+==== Модели запроса/ответа
+
+[cols="1,1,2"]
+|===
+|Класс |Файл |Назначение
+
+|`LoginRequestModel`
+|`Controllers/AuthController.cs`
+|Тело `POST /Auth/Login`. Поля: `Username`, `Password`, `ReturnUrl`
+
+|`AuthResponse` (наследник `ApiResponse`)
+|`Models/ApiResponse.cs`
+|Ответ методов `POST /Auth/Login`, `POST /Auth/Logout`, `GET /Auth/AuthStatus`. Поля: `Success`, `Message`, `Error` (от `ApiResponse`), `Authenticated`, `ReturnUrl`
+
+|`TaskCreationModel`
+|`Models/TaskCreationModel.cs`
+|Тело `POST /Jira/CreateTasks`. Поля: `ProjectKey` (`[Required]`), `Summary` (`[Required]`), `Description` (`[Required]`), `CreateAnalysis` (default `true`), `CreateDev` (default `true`), `CreateTest` (default `true`)
+
+|`TaskCreationResponse` (наследник `ApiResponse`)
+|`Models/ApiResponse.cs`
+|Ответ `POST /Jira/CreateTasks`. Поля: `Success`, `Message`, `Error`, `TasksCreated`, `LinksCreated`, `Tasks: List<CreatedTask>`
+
+|`CreatedTask`
+|`Models/ApiResponse.cs`
+|Каждая созданная задача в `TaskCreationResponse.Tasks`. Поля: `Key`, `Summary`, `Url` (вида `https://jira.moscow.alfaintra.net/browse/<KEY>`), `Type`
+
+|`CleanupFilterModel`
+|`Controllers/CleanupController.cs`
+|Тело `POST /Cleanup/SearchTasks`. Поля: `EpicKeys`, `ExcludedEpics`, `Projects`, `ExcludedProjects`, `Statuses`, `ExcludedStatuses`, `CleanupCreatedDate?`, `ExcludedCreatedDate?`, `CleanupUpdatedDate?`, `ExcludedUpdatedDate?`, `SprintFilter`, `ExcludedSprints`
+
+|`ProcessTasksModel`
+|`Controllers/CleanupController.cs`
+|Тело `POST /Cleanup/ProcessTasks`. Поля: `TaskKeys`, `ActionType` (`"delete"` или `"transition"`), `TargetStatus`, `Resolution`
+
+|`ProcessResult`
+|`services/JiraService.cs`
+|Результат обработки одной задачи. Поля: `Key`, `Success`, `Action` (`deleted` / `delete` / `transitioned` / `transition`), `Message`, `OldStatus`, `NewStatus`, `Resolution`, `ErrorDetails`
+
+|`JiraTask`
+|`services/JiraService.cs`
+|Возвращается в `POST /Cleanup/SearchTasks`. Поля: `Key`, `Summary`, `Status`, `Created`, `Updated`, `Project`, `IssueType`, `Url`, `Sprint`, `EpicLink`, `Assignee`, `Reporter`, `Priority`, `Labels`, `Resolution`, `DueDate`, `TimeEstimate`, `TimeSpent`
+
+|`GantGenerateRequest`
+|`Models/GantModels.cs`
+|Тело `POST /Gant/Generate`. Поля: `JiraServer` (default `https://jira.moscow.alfaintra.net`), `Projects`, `VerifySsl` (default `false`), `Employees: List<GantEmployeeInput>`, `Schedule: GantScheduleSettings`
+
+|`GantEmployeeInput`
+|`Models/GantModels.cs`
+|Поля: `Name`, `Role` (`tester` / `analyst` / `backend_dev` / `frontend_dev`), `HoursPerDay` (default `8`), `WorkStart` (`09:00`), `WorkEnd` (`18:00`), `LunchStart` (`13:00`), `LunchEnd` (`14:00`)
+
+|`GantScheduleSettings`
+|`Models/GantModels.cs`
+|Поля: `TaskTransitionLagMinutes` (default `60`). Также содержит вычисляемые конверсии Story Points → часы/дни через приватные `SpBase = 21`, `SprintHoursTotal = 80`, `AgilePercent = 15`. Формулы: `SpToWorkHoursConverted(sp) = sp * 80 * (1-0.15) / 21 ≈ sp * 3.238`, `SpToWorkDays(sp) = (sp / 21) * 10`, `SpToTotalHoursConverted(sp) = sp * 80 / 21`
+
+|`GantGenerateResponse`
+|`Models/GantModels.cs`
+|Ответ `POST /Gant/Generate`. Поля: `Success`, `Error?`, `Stats?: GantStats`, `Scheduled: List<GantScheduledTask>`, `CriticalPathKeys`, `Utilization: Dictionary<string,double>`, `GanttImageBase64?` (на момент текущей версии не заполняется)
+
+|`GantStats`
+|`Models/GantModels.cs`
+|Сводные показатели: `TotalTasks`, `ScheduledTasks`, `NotScheduled`, `TotalStoryPoints`, `TotalWorkHours`, `CompletionDate?`, `TotalDurationHours?`, `TotalDurationDays?`, `CriticalPathCount`, `CriticalSp`
+
+|`GantScheduledTask`
+|`Models/GantModels.cs`
+|Запланированная задача. Поля: `Key`, `Summary`, `StoryPoints`, `DurationWorkHours`, `DurationWorkDays`, `DurationTotalHours`, `TaskType`, `AssignedResource?`, `AssignmentReason?`, `ScheduledStart`, `ScheduledEnd`, `Priority`, `DueDate?`, `Link`, `Status`, `IsCritical`, `BlockedBy`, `Blocks`
+
+|`ErrorViewModel`
+|`Controllers/HomeController.cs` (продублирован также в `Models/ErrorViewModel.cs`)
+|Модель `Views/Shared/Error.cshtml`. Поле: `RequestId?`, вычисляемое `ShowRequestId`
+
+|===
+
+==== Внутренние доменные типы (Gant)
+
+[cols="1,1,2"]
+|===
+|Тип |Файл |Назначение
+
+|`GantRole`
+|`Models/GantModels.cs`
+|Enum: `Tester`, `Analyst`, `BackendDev`, `FrontendDev`. Парсится из строкового `role` через `GantService.ParseRole` (lower-case)
+
+|`GantEmployee`
+|`Models/GantModels.cs`
+|Полностью разобранный сотрудник. Метод `CanHandle(taskType)` мапит `TEST -> Tester`, `DEV BACK -> BackendDev`, `DEV FRONT -> FrontendDev`, `SA -> Analyst`
+
+|`RawJiraTask`
+|`Models/GantModels.cs` (internal)
+|Сырые данные задачи Jira после парсинга в `GantService.FetchJiraTasksAsync`: `Key`, `Summary`, `StoryPoints`, длительности, `Assignee?`, `TaskType`, `Sprint`, `Priority`, `PriorityWeight`, `CreatedDate`, `DueDate?`, `Link`, `Status`, `Blocks`, `BlockedBy`
+
+|`ResourceCalendar`
+|`services/ScheduleBuilder.cs`
+|Календарь занятости одного `GantEmployee`. Хранит отсортированный список забронированных слотов `(Start, End)`. Метод `FindAvailableSlot(durationHours, earliestStart, lagMinutes)` ищет первое свободное окно длиной `duration` начиная не ранее `earliestStart`, обходя пересечения с уже забронированными слотами (макс. 200 итераций), либо паркуется после последнего слота как fallback
+
+|`ScheduleBuilder`
+|`services/ScheduleBuilder.cs`
+|Оркестратор планирования. На вход — `List<GantEmployee>` и `GantScheduleSettings`. На выход — `ScheduledTasks`, `CriticalPath`, `CompletionDate`, `TotalDurationHours/Days`, `CriticalSp/Hours/Days`. Реализует list-scheduling в несколько проходов и алгоритм критического пути двусторонним обходом графа `Blocks/BlockedBy`
+
+|`WorkDayCalculator`
+|`services/WorkDayCalculator.cs`
+|Считает рабочее время с учётом обеденного перерыва и выходных. Ключевой метод `AddWorkMinutes(start, minutes)` — «прибавляет» рабочие минуты к моменту времени, корректно прыгая через обед, конец дня и выходные. Обеспечивает методы `IsWorkday`, `IsWorkingHours`, `CalculateEndTime`
+
+|===
+
+==== DTO Jira REST
+
+В `services/JiraService.cs` живут классы для десериализации ответа Jira: `JiraSearchResult`, `JiraIssue`, `IssueFields` (со всеми кастомными полями: `customfield_10007 = Sprint`, `customfield_10008 = EpicLink`, `customfield_10009 = EpicName`, `customfield_10372 = Story Points` — последнее используется только в `Gant`), `Status`, `StatusCategory`, `Project`, `IssueType`, `User`, `AvatarUrls`, `Priority`, `Component`, `Sprint`, `Resolution`, `Progress`, `Votes`, `Watches`, `Attachment`, `CommentList`, `WorklogList`, `IssueLink`, `Version`, `Transition`, `FieldMetadata`, `FieldSchema`, `TransitionsResponse`. Эти типы носят прикладной характер и не являются частью контракта csmhelper.

@@ -1,0 +1,31 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant jira_service as "JiraService"
+participant session as "HttpContext.Session"
+end box
+participant jira as "Jira REST API"
+
+client->api ++: POST /Cleanup/SearchTasks\nCleanupFilterModel
+api->session: GetString("IsAuthenticated")
+alt не авторизован
+    api-->client: 200 OK\n{success=false, error="Требуется авторизация"}
+else
+    api->jira_service ++: SearchTasksAsync(filters)
+    jira_service->session: GetString(JiraUsername/JiraPassword)
+    jira_service->jira_service: BuildJqlQuery(filters)
+    jira_service->jira: GET /rest/api/2/search?jql=...\n&fields=...&maxResults=1000
+    alt 2xx
+        jira-->jira_service: JiraSearchResult JSON
+        jira_service->jira_service: map JiraIssue -> JiraTask
+        jira_service-->api: List<JiraTask>
+        api-->client: 200 OK\n{success=true, tasks=[...]}
+    else 4xx/5xx
+        jira-->jira_service: error body
+        jira_service-->api: throw Exception
+        api-->client --: 200 OK\n{success=false, error="Ошибка при поиске задач: ..."}
+    end
+end
+
+@enduml

@@ -1,0 +1,16 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant jira_service as "JiraService"
+participant session as "HttpContext.Session"
+end box
+
+client->api ++: POST /Auth/Logout
+api->jira_service ++: LogoutAsync()
+jira_service->session: Remove("JiraUsername")\nRemove("JiraPassword")
+jira_service-->api --: void
+api->session: Remove("IsAuthenticated")
+api-->client --: 200 OK\n{Success=true, Authenticated=false}
+
+@enduml

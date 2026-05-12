@@ -1,0 +1,15 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant logs_fs as "logs/timer_access.log\nlogs/userlogs.txt"
+participant view as "Views/Timer/Index.cshtml"
+end box
+
+client->api ++: GET /Timer
+api->logs_fs: append PAGE_ACCESS\n(timestamp, IP, UA, message)
+api->view ++: render
+view-->api --: HTML
+api-->client --: 200 OK + HTML
+
+@enduml

@@ -1,0 +1,17 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant view as "Views/Auth/Login.cshtml"
+end box
+
+client->api ++: GET /Auth/Login?returnUrl=...
+opt returnUrl пуст
+    api->api: returnUrl = "/Jira"
+end
+api->api: ViewData["ReturnUrl"] = returnUrl
+api->view ++: render
+view-->api --: HTML
+api-->client --: 200 OK + HTML формы входа
+
+@enduml

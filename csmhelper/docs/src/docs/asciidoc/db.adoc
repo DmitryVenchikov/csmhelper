@@ -1,0 +1,69 @@
+=== Описание структуры данных
+
+Сервис не использует собственную базу данных и не пишет ничего в Jira «в обход» REST API. Единственная локальная сущность — каталог `logs/` рядом с исполняемым файлом, в котором ведутся текстовые лог-файлы. Все файлы создаются автоматически при первом обращении (`Directory.CreateDirectory`).
+
+==== Каталог `logs/` — состав файлов
+
+[cols="1,1,2"]
+|===
+|Файл |Источник |Назначение
+
+|`logs/userlogs.txt`
+|`AuthController.TrackUserLogin`, `AuthController.TrackFailedLogin`, `AuthController.UpdateMonthlyStats`, `AuthController.UpdateFailedLoginStats`, `TimerController.LogAccess`, `TimerController.LogError`, `TimerController.TrackPageVisit`
+|Сводный текстовый лог событий: успешные/неуспешные логины, доступ к страницам, ошибки, отметка первого пользователя в месяце, `SECURITY_WARNING` при `>= 5` неудачных попытках за день
+
+|`logs/failed_logins.txt`
+|`AuthController.TrackFailedLogin`
+|Подробный построчный лог неудачных попыток с IP клиента: `[<ts>] User: <username>, Reason: <reason>, IP: <ip>`
+
+|`logs/daily_stats_<yyyy-MM-dd>.txt`
+|`AuthController.UpdateDailyStats`
+|Дневная статистика успешных логинов: построчно `<username>: <count>`. Парсится в `Dictionary<string,int>` методом `GET /auth/stats`
+
+|`logs/monthly_stats_<yyyy-MM>.txt`
+|`AuthController.UpdateMonthlyStats`
+|Месячная статистика успешных логинов: построчно `<username>: <count>`. При первом входе пользователя за месяц в `userlogs.txt` записывается строка `MONTHLY_STATS - New unique user for <month>: <username>`
+
+|`logs/failed_stats_<yyyy-MM-dd>.txt`
+|`AuthController.UpdateFailedLoginStats`
+|Дневная статистика неудачных попыток. Формат строки: `<username> \| <attempts> \| <last attempt yyyy-MM-dd HH:mm:ss> \| <reason>`. Для накопления используется `FailedLoginInfo { Username, Attempts, LastAttempt, LastReason }`
+
+|`logs/timer_access.log`
+|`TimerController.LogAccess`
+|Лог обращений к страницам раздела Timer (Index, Privacy, CustomTimer): `[<ts>] PAGE_ACCESS - Page: <name>, IP: ..., UserAgent: ..., Message: ...`
+
+|`logs/timer_errors.log`
+|`TimerController.LogError`
+|Лог ошибок раздела Timer (включая `GET /Timer/Error`): `[<ts>] ERROR - Method: ..., IP: ..., Message: ..., Path: ...`
+
+|`logs/page_stats_<yyyy-MM-dd>.txt`
+|`TimerController.TrackPageVisit`, `GET /timer/stats`
+|Дневная статистика посещений страниц Timer: построчно `<page>: <count>`. Используется для ответа `GET /timer/stats`
+
+|`logs/timer_custom.log`
+|`TimerController.CustomTimer`
+|Лог запросов кастомных таймеров: `[<ts>] CUSTOM_TIMER - ID: <id>, User: <name\|Anonymous>, IP: <ip>`
+
+|===
+
+==== Сессионные данные ASP.NET Core
+
+В `Session` сервис хранит три ключа (cookies-based, `IdleTimeout = 30 минут`, см. `Program.cs`):
+
+[cols="1,1,2"]
+|===
+|Ключ |Тип |Назначение
+
+|`JiraUsername`
+|String
+|Логин пользователя в Jira. Используется для построения Basic-auth заголовка во всех вызовах Jira REST API. Пишется в `JiraService.AuthenticateAsync`, очищается в `JiraService.LogoutAsync`
+
+|`JiraPassword`
+|String
+|Пароль пользователя в Jira (хранится в открытом виде в Session-cookie, см. ADR в `decisions.adoc`). Пишется в `JiraService.AuthenticateAsync`, очищается в `JiraService.LogoutAsync`
+
+|`IsAuthenticated`
+|String
+|Флаг локальной аутентификации (`"true"` / отсутствует). Проверяется в каждом защищённом endpoint'е (`Jira`, `Cleanup`, `Gant`). Пишется в `AuthController.Login`, удаляется в `AuthController.Logout`
+
+|===

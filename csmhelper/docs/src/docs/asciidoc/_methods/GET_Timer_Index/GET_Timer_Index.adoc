@@ -1,0 +1,20 @@
+=== `GET /Timer` Главная страница раздела Timer
+
+
+==== Назначение
+Вспомогательная публичная страница раздела Timer (исторически унаследованный от шаблона страницы). Помимо рендера представления `Views/Timer/Index.cshtml` метод *логирует факт обращения* к странице на диск — это используется для сбора статистики посещений (см. `GET /timer/stats`).
+
+==== Схема работы
+[plantuml, "GET_Timer_Index","png"]
+----------
+include::GET_Timer_Index.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает запрос `GET /Timer` (или `GET /Timer/Index`)
+. Система вызывает приватный `LogAccess("Index", "Home page accessed")`:
+.. Создаёт каталог `logs/` при отсутствии
+.. Дописывает строку `[<timestamp>] PAGE_ACCESS - Page: Index, IP: <ip>, UserAgent: <ua>, Message: <msg>` в `logs/timer_access.log` и в общий `logs/userlogs.txt`
+.. При исключении пишет `LogError`
+. Система рендерит представление `Views/Timer/Index.cshtml`
+. Система возвращает HTML с HTTP-кодом = 200 OK

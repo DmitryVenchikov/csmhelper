@@ -1,0 +1,27 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant jira_service as "JiraService"
+participant session as "HttpContext.Session"
+participant view as "Views/Jira/Index.cshtml"
+end box
+
+client->api ++: GET /Jira
+api->session: GetString("IsAuthenticated")
+alt не "true"
+    api-->client: 302 -> /Auth/Login?returnUrl=/Jira
+else "true"
+    api->jira_service ++: IsAuthenticatedAsync()
+    jira_service->session: GetString("JiraUsername"/"JiraPassword")
+    jira_service-->api --: bool
+    alt false
+        api-->client: 302 -> /Auth/Login?returnUrl=/Jira
+    else true
+        api->view ++: render
+        view-->api --: HTML
+        api-->client --: 200 OK + HTML
+    end
+end
+
+@enduml

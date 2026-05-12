@@ -1,0 +1,33 @@
+=== `POST /Jira/CreateTasks` Создание связки задач (ANALYSIS / DEV / TEST)
+
+
+==== Назначение
+Метод создаёт в выбранном проекте Jira до трёх задач — *аналитику*, *разработку* и *тестирование* — на основе одного описания. Каждая создаётся как `Task` с префиксом `ANALYSIS:`, `DEV:` или `TEST:` в `summary` и пометкой типа в описании. После создания задачи последовательно связываются связями `Blocks` (`ANALYSIS → DEV → TEST`), что фиксирует порядок исполнения.
+
+Тело запроса — `TaskCreationModel { ProjectKey, Summary, Description, CreateAnalysis, CreateDev, CreateTest }`. Поля `ProjectKey`, `Summary` и `Description` обязательны (валидируются `[Required]` и `ModelState`).
+
+Метод всегда возвращает HTTP-код = 200 OK; реальный исход в поле `Success` тела `TaskCreationResponse`.
+
+==== Схема работы
+[plantuml, "POST_Jira_CreateTasks","png"]
+----------
+include::POST_Jira_CreateTasks.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает запрос `POST /Jira/CreateTasks` с телом `TaskCreationModel`
+.. Если `Session["IsAuthenticated"] != "true"` — Система возвращает `200 OK` с `{ Success = false, Error = "Требуется авторизация" }`
+.. Если `ModelState.IsValid == false` (нет `ProjectKey`/`Summary`/`Description`) — Система возвращает `200 OK` с `{ Success = false, Error = "Неверные данные для создания задач" }`
+. Система вызывает `IJiraService.CreateLinkedTasksAsync(model)`:
+.. Сервис повторно проверяет аутентификацию через `IsAuthenticatedAsync()`. При неуспехе возвращает `{ Success = false, Error = "Требуется аутентификация" }`
+.. Сервис формирует Basic-auth заголовок из `Session.JiraUsername`/`JiraPassword`
+.. Если `model.CreateAnalysis == true` — сервис вызывает `CreateIssueAsync(model, "ANALYSIS", " - Аналитика", "Тип: Аналитическая задача...")` и (при ненулевом результате) добавляет `CreatedIssue` в список
+.. Если `model.CreateDev == true` — сервис вызывает `CreateIssueAsync(model, "DEV", " - Разработка", ...)` аналогично
+.. Если `model.CreateTest == true` — сервис вызывает `CreateIssueAsync(model, "TEST", " - Тестирование", ...)`
+.. Каждый вызов `CreateIssueAsync` шлёт `POST /rest/api/2/issue` со схемой `{ fields: { project: {key}, summary: "<prefix>: <summary><suffix>", description: <descriptionWithSuffix>, issuetype: {name:"Task"} } }`. При не-2xx ответе возвращает `null` и задача не учитывается
+.. Сервис создаёт связи: для всех соседних пар `(createdIssues[i], createdIssues[i+1])` вызывает `CreateIssueLinkAsync(inwardIssue=i, outwardIssue=i+1, type="Blocks")` через `POST /rest/api/2/issueLink`. Каждая успешная связь увеличивает счётчик `linksCreated`
+.. Сервис формирует ответ: `Success = true`, `TasksCreated = createdIssues.Count`, `LinksCreated = linksCreated`, `Tasks = [{Key, Summary, Url=https://jira.moscow.alfaintra.net/browse/<Key>, Type}]`, `Message = "Успешно создано N задач с M блокирующими связями"`
+.. При исключении сервис возвращает `{ Success = false, Error = "Ошибка при создании задач: <message>" }`
+. Контроллер логирует `LogInformation` сводку и каждую созданную задачу
+. Если в обработке возникло исключение — Система пишет `LogError` и возвращает `200 OK` с `{ Success = false, Error = "Ошибка при создании задач: <message>" }`
+. Система отправляет ответ клиенту

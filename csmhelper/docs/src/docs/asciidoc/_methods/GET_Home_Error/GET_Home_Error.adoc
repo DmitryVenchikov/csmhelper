@@ -1,0 +1,18 @@
+=== `GET /Home/Error` Страница ошибки
+
+
+==== Назначение
+Глобальная страница ошибки. Маршрутизируется через `app.UseExceptionHandler("/Home/Error")` в `Program.cs` для не-development окружений. Отдаёт `Views/Shared/Error.cshtml` с моделью `ErrorViewModel { RequestId }`, где `RequestId` — это `Activity.Current?.Id` или `HttpContext.TraceIdentifier`. Помечена `[ResponseCache(Duration=0, NoStore=true)]`, чтобы страница ошибки не кэшировалась.
+
+==== Схема работы
+[plantuml, "GET_Home_Error","png"]
+----------
+include::GET_Home_Error.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает запрос `GET /Home/Error` (обычно перенаправлением из `UseExceptionHandler`)
+. Система формирует `requestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier`
+. Система формирует модель `ErrorViewModel { RequestId = requestId }`
+. Система рендерит представление `Views/Shared/Error.cshtml`
+. Система возвращает HTML с HTTP-кодом = 200 OK и заголовками запрета кэширования (`Cache-Control: no-store`)

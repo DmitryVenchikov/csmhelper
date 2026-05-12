@@ -1,0 +1,55 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant jira_service as "JiraService"
+participant session as "HttpContext.Session"
+end box
+participant jira as "Jira REST API"
+
+client->api ++: POST /Cleanup/ProcessTasks\nProcessTasksModel
+api->session: GetString("IsAuthenticated")
+alt не авторизован
+    api-->client: 200 OK\n{success=false, error="Требуется авторизация"}
+else
+    api->jira_service ++: ProcessTasksAsync(keys, action,\n target, resolution)
+    loop батч по 3 задачи
+        loop по задачам в батче (параллельно)
+            jira_service->jira: GET /rest/api/2/issue/<k>?fields=status
+            jira-->jira_service: current status
+            alt action == delete
+                jira_service->jira: DELETE /rest/api/2/issue/<k>
+                alt 2xx
+                    jira-->jira_service: 204
+                    jira_service->jira_service: ProcessResult{Success=true,\n Action="deleted"}
+                else 4xx/5xx
+                    jira-->jira_service: error
+                    jira_service->jira_service: ProcessResult{Success=false,\n Action="delete", Message=...}
+                end
+            else action == transition
+                jira_service->jira: GET /rest/api/2/issue/<k>/transitions
+                jira-->jira_service: list of transitions
+                alt переход найден
+                    jira_service->jira: POST /rest/api/2/issue/<k>/transitions\n{transition.id, fields.resolution?}
+                    alt 2xx
+                        jira-->jira_service: 204
+                        jira_service->jira_service: ProcessResult{Success=true,\n Action="transitioned",\n NewStatus, Resolution}
+                    else 4xx/5xx
+                        jira-->jira_service: error
+                        jira_service->jira_service: ProcessResult{Success=false,\n Action="transition", Message=...}
+                    end
+                else переход не найден
+                    jira_service->jira_service: ProcessResult{Success=false,\n Message="Не найден переход..."}
+                end
+            end
+        end
+        jira_service->jira_service: await Task.WhenAll(batch)
+        opt батч не последний
+            jira_service->jira_service: Task.Delay(500)
+        end
+    end
+    jira_service-->api --: List<ProcessResult>
+    api-->client --: 200 OK\n{success=true, results=[...]}
+end
+
+@enduml

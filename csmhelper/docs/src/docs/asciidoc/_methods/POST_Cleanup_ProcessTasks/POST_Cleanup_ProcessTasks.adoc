@@ -1,0 +1,47 @@
+=== `POST /Cleanup/ProcessTasks` Массовая обработка задач (delete / transition)
+
+
+==== Назначение
+Метод выполняет массовое действие над списком задач Jira, отобранных пользователем в `POST /Cleanup/SearchTasks`. На вход принимается `ProcessTasksModel { TaskKeys, ActionType, TargetStatus, Resolution }`, где `ActionType` — `"delete"` или `"transition"`. Сервис разбивает список задач на батчи по 3 штуки и выполняет действия параллельно внутри батча с паузой `500 ms` между батчами, чтобы не перегружать Jira.
+
+При `ActionType = "transition"` сервис ищет среди доступных переходов целевого статуса либо по точному совпадению имени, либо по подстроке-ключевому слову (`close`, `done`, `resolve`, `complete`, `finished`); если найден переход в *закрывающий* статус и передан `Resolution` — он добавляется в `fields.resolution.name`.
+
+При `ActionType = "delete"` отправляется `DELETE /rest/api/2/issue/<key>`.
+
+Метод всегда возвращает HTTP-код = 200 OK; статусы каждой задачи лежат в массиве `results` тела ответа.
+
+==== Схема работы
+[plantuml, "POST_Cleanup_ProcessTasks","png"]
+----------
+include::POST_Cleanup_ProcessTasks.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает запрос `POST /Cleanup/ProcessTasks` с телом `ProcessTasksModel`
+.. Если `Session["IsAuthenticated"] != "true"` — Система возвращает `200 OK` с `{ success = false, error = "Требуется авторизация" }`
+. Система вызывает `IJiraService.ProcessTasksAsync(taskKeys, actionType, targetStatus, resolution)`:
+.. Сервис разбивает `taskKeys` на батчи по `3` элемента (`Skip(i).Take(3)`)
+.. Для каждого батча сервис собирает `List<Task<ProcessResult>>`:
+... Для каждой задачи в батче сервис сначала вызывает `GetCurrentStatusAsync(taskKey)` (запрос `GET /rest/api/2/issue/<key>?fields=status`) — для отладки
+... Если `actionType == "delete"` — добавляется задание `DeleteIssueAsync(taskKey)`
+... Если `actionType == "transition"` — добавляется задание `TransitionIssueAsync(taskKey, targetStatus, resolution)`
+.. Сервис ждёт завершения всех заданий батча через `Task.WhenAll` и складывает результаты в общий список
+.. Если батч не последний, сервис делает `await Task.Delay(500)` перед следующим
+. `DeleteIssueAsync(key)`:
+.. Сервис формирует Basic-auth заголовок и шлёт `DELETE /rest/api/2/issue/<key>`
+.. Если ответ 2xx — возвращает `ProcessResult { Success = true, Action = "deleted", Message = "Задача успешно удалена" }`
+.. Иначе возвращает `ProcessResult { Success = false, Action = "delete", Message = "Ошибка при удалении: <code>", ErrorDetails = <body> }`
+.. При исключении возвращает `ProcessResult { Success = false, Action = "delete", Message = "Исключение при удалении: <message>" }`
+. `TransitionIssueAsync(key, targetStatus, resolution)`:
+.. Сервис вызывает `GetTransitionsAsync(key)` — `GET /rest/api/2/issue/<key>/transitions?expand=transitions.fields`
+.. Сервис ищет переход, имя `to.Name` или `name` которого совпадает с `targetStatus` без учёта регистра и пробелов; при отсутствии — пробует поиск по ключевым словам (`close`, `done`, `resolve`, `complete`, `finished`)
+.. Если переход не найден — возвращает `ProcessResult { Success = false, Action = "transition", Message = "Не найден переход в статус '<targetStatus>'", ErrorDetails = "Доступные переходы: ..." }`
+.. Если переход найден, сервис формирует тело `{ transition: { id }, fields: { resolution: { name } }? }`. Поле `fields.resolution` добавляется только если передан `resolution` *и* целевой `to.Name` содержит `close`/`done`/`resolve`
+.. Сервис шлёт `POST /rest/api/2/issue/<key>/transitions` с этим телом
+.. При 2xx возвращает `ProcessResult { Success = true, Action = "transitioned", NewStatus = to.Name, Resolution = resolution }`
+.. Иначе возвращает `ProcessResult { Success = false, Action = "transition", Message = "Ошибка при переводе статуса: <code>", ErrorDetails = <body> }`
+.. При исключении возвращает `ProcessResult { Success = false, Action = "transition", Message = "Исключение при переводе статуса: <message>" }`
+. Контроллер логирует в `Console` сводку и каждый результат
+. Если в обработке возникло исключение — Система пишет `LogError` и возвращает `200 OK` с `{ success = false, error = "Ошибка при обработке задач: <message>" }`
+. Система формирует ответ `{ success = true, results = [ProcessResult, ...] }` с HTTP-кодом = 200 OK
+. Система отправляет ответ клиенту

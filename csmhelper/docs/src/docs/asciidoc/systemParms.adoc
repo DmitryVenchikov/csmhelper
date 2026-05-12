@@ -1,0 +1,167 @@
+=== Системные параметры
+
+==== Конфигурация сборки
+
+[cols="1,1,2"]
+|===
+|Параметр |Значение |Описание
+
+|`TargetFramework`
+|`net8.0`
+|Целевой `.NET` (см. `csmhelper.csproj`)
+
+|`Nullable`
+|`enable`
+|Включён nullable reference types
+
+|`ImplicitUsings`
+|`enable`
+|Включены неявные `using`-директивы
+
+|`Newtonsoft.Json`
+|`13.0.4`
+|NuGet-зависимость, используется для сериализации/десериализации запросов и ответов Jira (атрибуты `[JsonProperty(...)]` в DTO Jira)
+
+|===
+
+==== Конфигурация приложения
+
+Источники конфигурации — `appsettings.json` и `appsettings.Development.json`.
+
+[cols="1,1,2"]
+|===
+|Ключ |Значение по умолчанию |Описание
+
+|`Logging:LogLevel:Default`
+|`Debug`
+|Уровень логирования по умолчанию
+
+|`Logging:LogLevel:Microsoft`
+|`Warning`
+|Уровень для пространства имён `Microsoft.*`
+
+|`Logging:LogLevel:Microsoft.Hosting.Lifetime`
+|`Information`
+|Уровень для логов запуска/остановки приложения
+
+|`Logging:LogLevel:csmhelper`
+|`Debug`
+|Уровень для собственных классов сервиса
+
+|`AllowedHosts`
+|`*`
+|Список разрешённых Host-заголовков
+
+|`Jira:BaseUrl`
+|`https://jira.moscow.alfaintra.net`
+|Базовый URL Jira. На текущий момент *не* читается из конфигурации в коде — `JiraService` и `GantService` хардкодят URL `https://jira.moscow.alfaintra.net`. Параметр зарезервирован
+
+|===
+
+==== Параметры HTTP-клиента к Jira
+
+Регистрируется в `Program.cs` через `AddHttpClient<IJiraService, JiraService>`:
+
+[cols="1,1,2"]
+|===
+|Параметр |Значение |Описание
+
+|`BaseAddress`
+|`https://jira.moscow.alfaintra.net`
+|Базовый URL Jira
+
+|`Timeout`
+|`30 секунд`
+|Таймаут запроса (для `JiraService`). В `GantService` создаётся отдельный `HttpClient` с таймаутом `120 секунд`
+
+|`ServerCertificateCustomValidationCallback`
+|кастомный
+|Доверяет сертификату, если: ошибок валидации нет, либо `cert.Issuer` содержит `alfaintra`, либо ошибка только `RemoteCertificateChainErrors`
+
+|===
+
+В `GantService.FetchJiraTasksAsync` используется отдельный одноразовый `HttpClient`. Если `request.VerifySsl == false`, валидация SSL отключается полностью (`(_, _, _, _) => true`).
+
+==== Параметры сессии ASP.NET Core
+
+Регистрируется в `Program.cs` через `AddSession`:
+
+[cols="1,1,2"]
+|===
+|Параметр |Значение |Описание
+
+|`IdleTimeout`
+|`30 минут`
+|После 30 минут бездействия cookie-сессия истекает
+
+|`Cookie.HttpOnly`
+|`true`
+|Cookie не доступен из JavaScript
+
+|`Cookie.IsEssential`
+|`true`
+|Помечен как essential для GDPR-баннеров
+
+|===
+
+==== Параметры пайплайна ASP.NET Core
+
+[cols="1,2"]
+|===
+|Middleware |Условие/Параметр
+
+|`UseExceptionHandler("/Home/Error")`
+|только в non-Development окружении
+
+|`UseHsts()`
+|только в non-Development окружении
+
+|`UseHttpsRedirection()`
+|всегда
+
+|`UseStaticFiles()`
+|всегда
+
+|`UseRouting()`
+|всегда
+
+|`UseAuthorization()`
+|всегда
+
+|`UseSession()`
+|всегда (после `UseAuthorization`)
+
+|`MapControllerRoute("default")`
+|`{controller=Home}/{action=Index}/{id?}`
+
+|===
+
+==== Параметры планирования (Gant)
+
+В `GantScheduleSettings`:
+
+[cols="1,1,2"]
+|===
+|Параметр |Значение |Описание
+
+|`TaskTransitionLagMinutes`
+|`60`
+|Лаг (минуты) между концом блокирующей задачи и стартом блокируемой
+
+|`SpBase`
+|`21`
+|Базовое число SP в спринте (приватная константа)
+
+|`SprintHoursTotal`
+|`80`
+|Часов в спринте на одного сотрудника (приватная константа)
+
+|`AgilePercent`
+|`15`
+|Процент времени, забронированный под agile-активности и не участвующий в `WorkHours` (приватная константа)
+
+|`SpToWorkHours`
+|`SprintHoursTotal * (1 - AgilePercent / 100) / SpBase ≈ 3.238`
+|Сколько чистых рабочих часов в одном SP
+
+|===

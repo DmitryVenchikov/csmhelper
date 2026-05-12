@@ -1,0 +1,11 @@
+=== Отчёт о тестировании
+
+В репозитории отсутствует проект автотестов (`*Tests.csproj`), CI-конфиги, отчёты pipeline. На текущий момент верификация изменений выполняется ручным smoke-сценарием:
+
+. Запуск приложения локально (`dotnet run` из каталога `csmhelper/`)
+. `GET /Auth/Login` → ввод тестовых кредов Jira → ожидаемый редирект на `/Jira`
+. `POST /Jira/CreateTasks` с проектом-песочницей и опцией `CreateAnalysis = true` (одна задача без связей) — проверка формы создания
+. `GET /Cleanup` → задание JQL фильтра `Sprint IS EMPTY AND project = "<sandbox>"` → `POST /Cleanup/SearchTasks`, далее `POST /Cleanup/ProcessTasks` с `ActionType = "transition"` в безопасный статус
+. `GET /Gant` → один сотрудник по каждой роли (`tester`, `analyst`, `backend_dev`, `frontend_dev`) → `POST /Gant/Generate` с тестовым проектом — проверка отсутствия 5xx, корректности `Stats.TotalTasks` и непустого `Scheduled`
+
+Раздел зарезервирован под автоматизированный отчёт о тестировании — например, html-отчёт `xunit`/`Allure`. При появлении такого отчёта нужно подключить его сюда (`include::{snippets}/reports/...`).

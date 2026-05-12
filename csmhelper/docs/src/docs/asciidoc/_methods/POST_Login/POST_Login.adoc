@@ -1,0 +1,36 @@
+=== `POST /Auth/Login` Аутентификация в Jira
+
+
+==== Назначение
+Метод выполняет логин пользователя в Jira: проверяет переданные учётные данные через Basic-auth запрос `GET /rest/api/2/myself`, при успехе сохраняет логин/пароль в `Session` и помечает пользователя как авторизованного. Метод также ведёт текстовые логи входа: успешные/неуспешные попытки, дневная и месячная статистика, аккумулятор подозрительных попыток (`failed_stats_*.txt`).
+
+Тело запроса — JSON `LoginRequestModel { Username, Password, ReturnUrl }`. Ответ — JSON `AuthResponse`. Метод всегда возвращает HTTP-код = 200 OK; результат различается по полю `Success` тела.
+
+==== Схема работы
+[plantuml, "POST_Login","png"]
+----------
+include::POST_Login.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает и разбирает запрос `POST /Auth/Login` с телом `LoginRequestModel`
+.. Если тело не удалось десериализовать (`model == null`) — Система возвращает `200 OK` с JSON `{ Success = false, Error = "Данные не получены" }`
+.. Если `Username` или `Password` пусты/whitespace — Система вызывает `TrackFailedLogin(username ?? "empty_username", "Empty username or password")` и возвращает `200 OK` с `{ Success = false, Error = "Логин и пароль обязательны" }`
+. Система вызывает `IJiraService.AuthenticateAsync(username, password)`
+.. Сервис формирует `Authorization: Basic base64(username:password)` и выполняет `GET /rest/api/2/myself` к Jira
+.. Если Jira отвечает успешно — Система кладёт в `Session` ключи `JiraUsername`, `JiraPassword` и возвращает `true`
+.. Если Jira отвечает ошибкой или возникает исключение — Сервис пишет ошибку в `Console`, метод возвращает `false`
+. Если `AuthenticateAsync` вернул `true`:
+.. Система вызывает `TrackUserLogin(username, success: true)` — пишет строку `LOGIN_SUCCESS` в `logs/userlogs.txt`, обновляет `logs/daily_stats_<yyyy-MM-dd>.txt` и `logs/monthly_stats_<yyyy-MM>.txt` (счётчики по пользователям)
+.. Система устанавливает `Session["IsAuthenticated"] = "true"`
+.. Система формирует `returnUrl = model.ReturnUrl ?? "/Jira"`
+.. Система возвращает `200 OK` с `{ Success = true, Authenticated = true, Message = "Успешная аутентификация", ReturnUrl = returnUrl }`
+. Если `AuthenticateAsync` вернул `false`:
+.. Система вызывает `TrackFailedLogin(username, "Invalid credentials")` — пишет строку `LOGIN_FAILED` в `logs/userlogs.txt` и `logs/failed_logins.txt` (с IP клиента), а также обновляет `logs/failed_stats_<yyyy-MM-dd>.txt` (счётчики попыток по пользователю и причина последней попытки)
+.. Если в `failed_stats_*.txt` накопилось `>= 5` попыток для пользователя — Система дописывает в `logs/userlogs.txt` строку `SECURITY_WARNING - User <username> has <N> failed login attempts today` и пишет `LogWarning`
+.. Система возвращает `200 OK` с `{ Success = false, Authenticated = false, Error = "Ошибка аутентификации. Проверьте логин и пароль." }`
+. Если в обработке возникло исключение:
+.. Система вызывает `TrackFailedLogin(username ?? "unknown_user", "Server error: <ex.Message>")`
+.. Система пишет `LogError`
+.. Система возвращает `200 OK` с `{ Success = false, Authenticated = false, Error = "Ошибка аутентификации: <message>" }`
+. Система отправляет ответ клиенту

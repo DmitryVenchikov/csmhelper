@@ -1,0 +1,24 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant logs_fs as "logs/page_stats_<today>.txt"
+end box
+
+client->api ++: GET /timer/stats
+api->logs_fs ++: read page_stats_<today>.txt
+alt файл существует
+    logs_fs-->api: lines
+else файл не существует
+    logs_fs-->api --: пусто
+end
+api->api: парсим в Dictionary<page,count>
+
+alt success
+    api-->client: 200 OK\n{Date, TotalVisits, PageStats,\n MostVisitedPage}
+else exception
+    api->api: LogError("GetPageStats", ...)
+    api-->client --: 200 OK\n{error: <message>}
+end
+
+@enduml

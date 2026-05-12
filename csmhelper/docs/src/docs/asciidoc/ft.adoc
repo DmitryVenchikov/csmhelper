@@ -1,0 +1,8 @@
+=== Feature-toggle
+
+В сервисе `csmhelper` feature-toggle не используются. Управление видимостью разделов выполняется на уровне исходного кода (наличие/отсутствие маршрута, проверка `Session["IsAuthenticated"]`).
+
+Если в будущем потребуется ввести feature-toggle — документировать в формате:
+|===
+|https://jira.moscow.alfaintra.net/browse/FEATOG-XXXX[<Feature Toggle Name>]
+|===

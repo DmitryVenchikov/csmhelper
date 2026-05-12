@@ -1,0 +1,24 @@
+=== `GET /timer/stats` Статистика посещений страниц Timer
+
+
+==== Назначение
+Сервисный (мониторинговый) метод. Возвращает агрегированную статистику посещений страниц раздела Timer за текущий день: суммарное число визитов, разбивку по страницам и самую посещаемую страницу. Данные читаются из файла `logs/page_stats_<yyyy-MM-dd>.txt`, который заполняется методом `TrackPageVisit` (вызывается из `GET /timer/custom/{id}`).
+
+==== Схема работы
+[plantuml, "GET_timer_stats","png"]
+----------
+include::GET_timer_stats.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает запрос `GET /timer/stats`
+. Система формирует путь `logs/page_stats_<yyyy-MM-dd>.txt`
+.. Если файл существует, Система читает построчно `File.ReadAllLines` и парсит каждую строку формата `<page>: <count>` в словарь `pageStats`
+.. Если файл отсутствует, словарь пуст
+. Система формирует JSON-ответ:
+.. `Date` — `DateTime.Now`
+.. `TotalVisits` — `pageStats.Sum(x => x.Value)`
+.. `PageStats` — словарь `<page> -> <count>`
+.. `MostVisitedPage` — `pageStats.OrderByDescending(x => x.Value).First().Key` или `"None"` если пусто
+. Если в обработке возникло исключение — Система вызывает `LogError("GetPageStats", ex.Message)` и возвращает JSON `{ error = <ex.Message> }`
+. Система возвращает ответ с HTTP-кодом = 200 OK

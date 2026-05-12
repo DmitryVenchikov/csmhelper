@@ -1,0 +1,23 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant logs_fs as "logs/*.txt"
+end box
+
+client->api ++: GET /auth/stats
+api->logs_fs ++: read daily_stats_<today>.txt
+logs_fs-->api --: lines | empty
+api->logs_fs ++: read monthly_stats_<month>.txt
+logs_fs-->api --: lines | empty
+api->logs_fs ++: read failed_stats_<today>.txt
+logs_fs-->api --: lines | empty
+api->api: TotalFailedToday = sum(parts[1])
+
+alt success
+    api-->client: 200 OK\n{Date, DailyStats, MonthlyStats,\n FailedStats, TotalFailedToday}
+else exception
+    api-->client --: 200 OK\n{error: <message>}
+end
+
+@enduml

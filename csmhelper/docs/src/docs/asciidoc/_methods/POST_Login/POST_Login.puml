@@ -1,0 +1,39 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant jira_service as "JiraService"
+participant session as "HttpContext.Session"
+participant logs_fs as "logs/*.txt"
+end box
+participant jira as "Jira REST API"
+
+client->api ++: POST /Auth/Login\n{Username,Password,ReturnUrl}
+
+alt model == null
+    api-->client: 200 OK\n{Success=false, Error="Данные не получены"}
+else username/password пусты
+    api->logs_fs: TrackFailedLogin\n("empty_username", "Empty username or password")
+    api-->client: 200 OK\n{Success=false, Error="Логин и пароль обязательны"}
+else
+    api->jira_service ++: AuthenticateAsync(u,p)
+    jira_service->jira ++: GET /rest/api/2/myself\nAuthorization: Basic ...
+    alt 2xx
+        jira-->jira_service --: 200 OK
+        jira_service->session: SetString("JiraUsername", u)\nSetString("JiraPassword", p)
+        jira_service-->api --: true
+        api->logs_fs: TrackUserLogin(u)\n(userlogs, daily_stats, monthly_stats)
+        api->session: SetString("IsAuthenticated","true")
+        api-->client: 200 OK\n{Success=true, Authenticated=true,\nReturnUrl=...}
+    else 4xx/5xx или Exception
+        jira-->jira_service: error
+        jira_service-->api: false
+        api->logs_fs: TrackFailedLogin(u, "Invalid credentials")
+        opt failed_stats >= 5 попыток
+            api->logs_fs: SECURITY_WARNING -> userlogs.txt
+        end
+        api-->client --: 200 OK\n{Success=false, Authenticated=false,\nError="Ошибка аутентификации..."}
+    end
+end
+
+@enduml

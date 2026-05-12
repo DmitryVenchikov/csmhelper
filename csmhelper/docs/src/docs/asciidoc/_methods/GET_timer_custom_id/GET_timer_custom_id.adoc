@@ -1,0 +1,24 @@
+=== `GET /timer/custom/{id}` Кастомный таймер по идентификатору
+
+
+==== Назначение
+Сервисный метод для трекинга кастомного таймера по числовому идентификатору `id`. Метод *не* возвращает HTML — это JSON-эндпоинт, который параллельно ведёт несколько лог-файлов: общий лог посещений (`logs/timer_access.log`, `logs/userlogs.txt`), статистику посещений по странице `CustomTimer/<id>` (`logs/page_stats_<today>.txt`, через `TrackPageVisit`) и отдельный кастомный лог `logs/timer_custom.log` с пользователем и IP.
+
+==== Схема работы
+[plantuml, "GET_timer_custom_id","png"]
+----------
+include::GET_timer_custom_id.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает запрос `GET /timer/custom/{id}`, где `id` — целое число
+. Система вызывает приватный `LogAccess("CustomTimer", $"Timer with ID {id} accessed")`:
+.. Дописывает строку `[<timestamp>] PAGE_ACCESS - Page: CustomTimer, IP: ..., UserAgent: ..., Message: Timer with ID <id> accessed` в `logs/timer_access.log` и `logs/userlogs.txt`
+. Система вызывает приватный `TrackPageVisit($"CustomTimer/{id}")`:
+.. Читает (либо инициализирует пустой) словарь из `logs/page_stats_<yyyy-MM-dd>.txt` и инкрементирует счётчик для страницы `CustomTimer/<id>`
+.. Если это первое посещение страницы за день — пишет в `logs/userlogs.txt` строку `PAGE_FIRST_VISIT - Page: CustomTimer/<id> visited for the first time today`
+.. Записывает обновлённый словарь обратно
+. Система дописывает в `logs/timer_custom.log` строку `[<timestamp>] CUSTOM_TIMER - ID: <id>, User: <name|Anonymous>, IP: <remote-ip>`
+. Если в обработке возникло исключение — Система вызывает `LogError("CustomTimer", $"Error loading timer {id}: {ex.Message}")` и возвращает JSON `{ error = <ex.Message> }`
+. Система формирует JSON `{ timerId = <id>, message = "Timer <id> loaded" }` и возвращает HTTP-код = 200 OK
+. Система отправляет ответ клиенту

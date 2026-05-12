@@ -1,0 +1,34 @@
+=== Термины и сокращения
+
+[cols="1,3", options="header"]
+|===
+|Значение |Описание
+
+|CSM
+|Customer Success Manager / Change & Service Manager — основной потребитель сервиса
+
+|Jira
+|Корпоративный экземпляр Jira `https://jira.moscow.alfaintra.net`, через REST API `v2`
+
+|JQL
+|Jira Query Language — язык фильтров Jira, используется в `Cleanup` и `Gant`
+
+|SP
+|Story Points (поле `customfield_10372` в Jira) — оценка задачи в сторипоинтах
+
+|Sprint
+|Поле `customfield_10007` в Jira — спринты, к которым прикреплена задача
+
+|Epic Link
+|Поле `customfield_10008` в Jira — ссылка на эпик-родителя
+
+|Critical Path
+|Критический путь — упорядоченная цепочка задач, определяющая минимальную длительность проекта в `Gant`
+
+|TaskType
+|Тип задачи в csmhelper. Определяется по подстроке в `summary` Jira: `[TEST]`, `[DEV BACK]`, `[DEV FRONT]`, `[SA]`
+
+|Role
+|Роль сотрудника в `Gant`: `tester`, `analyst`, `backend_dev`, `frontend_dev`. Определяет, какие `TaskType` он может брать
+
+|===

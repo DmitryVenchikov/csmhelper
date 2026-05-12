@@ -1,0 +1,32 @@
+== Методы и процессы сервиса
+
+// Аутентификация
+include::_methods/GET_Login/GET_Login.adoc[]
+include::_methods/POST_Login/POST_Login.adoc[]
+include::_methods/POST_Logout/POST_Logout.adoc[]
+include::_methods/GET_AuthStatus/GET_AuthStatus.adoc[]
+include::_methods/GET_auth_stats/GET_auth_stats.adoc[]
+
+// Главные страницы
+include::_methods/GET_Home_Index/GET_Home_Index.adoc[]
+include::_methods/GET_Home_Error/GET_Home_Error.adoc[]
+
+// Создание связанных задач Jira
+include::_methods/GET_Jira/GET_Jira.adoc[]
+include::_methods/POST_Jira_CreateTasks/POST_Jira_CreateTasks.adoc[]
+
+// Массовая обработка задач (Cleanup)
+include::_methods/GET_Cleanup/GET_Cleanup.adoc[]
+include::_methods/POST_Cleanup_SearchTasks/POST_Cleanup_SearchTasks.adoc[]
+include::_methods/POST_Cleanup_ProcessTasks/POST_Cleanup_ProcessTasks.adoc[]
+
+// Диаграмма Ганта
+include::_methods/GET_Gant/GET_Gant.adoc[]
+include::_methods/POST_Gant_Generate/POST_Gant_Generate.adoc[]
+
+// Timer (вспомогательные страницы со статистикой)
+include::_methods/GET_Timer_Index/GET_Timer_Index.adoc[]
+include::_methods/GET_Timer_Privacy/GET_Timer_Privacy.adoc[]
+include::_methods/GET_Timer_Error/GET_Timer_Error.adoc[]
+include::_methods/GET_timer_stats/GET_timer_stats.adoc[]
+include::_methods/GET_timer_custom_id/GET_timer_custom_id.adoc[]

@@ -1,0 +1,17 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant jira_service as "JiraService"
+participant session as "HttpContext.Session"
+end box
+
+client->api ++: GET /Auth/AuthStatus
+api->jira_service ++: IsAuthenticatedAsync()
+jira_service->session: GetString("JiraUsername")\nGetString("JiraPassword")
+jira_service-->api --: jiraAuth (bool)
+api->session: GetString("IsAuthenticated")
+api->api: sessionAuth = (val == "true")
+api-->client --: 200 OK\n{Success=true,\n Authenticated = jiraAuth AND sessionAuth}
+
+@enduml

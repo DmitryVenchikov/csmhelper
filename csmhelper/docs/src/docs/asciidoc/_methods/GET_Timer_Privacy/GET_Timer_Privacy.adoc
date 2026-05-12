@@ -1,0 +1,19 @@
+=== `GET /Timer/Privacy` Страница политики конфиденциальности
+
+
+==== Назначение
+Заглушечная публичная страница политики конфиденциальности. Логирует факт доступа аналогично `GET /Timer`, далее отдаёт представление `Views/Timer/Privacy.cshtml` (если есть) либо стандартное представление по соглашению.
+
+==== Схема работы
+[plantuml, "GET_Timer_Privacy","png"]
+----------
+include::GET_Timer_Privacy.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает запрос `GET /Timer/Privacy`
+. Система вызывает приватный `LogAccess("Privacy", "Privacy page accessed")`:
+.. Создаёт каталог `logs/` при отсутствии
+.. Дописывает строку `[<timestamp>] PAGE_ACCESS - Page: Privacy, IP: <ip>, UserAgent: <ua>, Message: <msg>` в `logs/timer_access.log` и `logs/userlogs.txt`
+. Система рендерит представление по соглашению (`Views/Timer/Privacy.cshtml`)
+. Система возвращает HTML с HTTP-кодом = 200 OK

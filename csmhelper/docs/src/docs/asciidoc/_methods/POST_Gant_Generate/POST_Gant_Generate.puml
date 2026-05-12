@@ -1,0 +1,63 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant gant_service as "GantService"
+participant schedule_builder as "ScheduleBuilder"
+participant calc as "WorkDayCalculator"
+participant session as "HttpContext.Session"
+end box
+participant jira as "Jira REST API"
+
+client->api ++: POST /Gant/Generate\nGantGenerateRequest
+api->session: GetString("IsAuthenticated")
+alt не авторизован
+    api-->client: 200 OK\n{Success=false, Error="Требуется авторизация"}
+else request == null
+    api-->client: 200 OK\n{Success=false, Error="Некорректные данные запроса"}
+else
+    api->gant_service ++: GenerateAsync(request)
+    gant_service->session: JiraUsername / JiraPassword
+    alt session пуста
+        gant_service-->api: {Success=false, Error="Сессия Jira истекла..."}
+        api-->client: 200 OK
+    else
+        gant_service->gant_service: build employees\n(ParseRole, ParseTime)
+        alt роль неизвестна или сотрудников нет
+            gant_service-->api: {Success=false, Error=...}
+            api-->client: 200 OK
+        else
+            gant_service->jira: GET /rest/api/2/search\nJQL: project in (...)\nAND status not in (Closed,Done,Resolved)
+            alt 2xx
+                jira-->gant_service: list of issues
+                gant_service->gant_service: для каждой задачи\nDetectTaskType, GetStoryPoints,\nParseLinks
+                opt задач нет после фильтра
+                    gant_service-->api: {Success=true, Stats={}, Scheduled=[]}
+                    api-->client: 200 OK
+                end
+                gant_service->schedule_builder ++: Build(rawTasks)
+                schedule_builder->schedule_builder: sort by BlockedBy.Count,\n PriorityWeight
+                loop проходы (макс 2*N)
+                    loop по задачам
+                        schedule_builder->schedule_builder: проверка блокеров
+                        opt все блокеры запланированы\n+ есть подходящий ресурс
+                            schedule_builder->calc ++: FindAvailableSlot\n(durationHours, earliestStart, lag)
+                            calc-->schedule_builder --: (start, end)
+                            schedule_builder->schedule_builder: BookSlot\nдобавить ScheduledTask
+                        end
+                    end
+                end
+                schedule_builder->schedule_builder: ComputeCriticalPath\nGetUtilization
+                schedule_builder-->gant_service --: List<GantScheduledTask>
+                gant_service-->api --: GantGenerateResponse{\n Success=true, Stats, Scheduled,\n CriticalPathKeys, Utilization}
+                api-->client: 200 OK
+            else 4xx/5xx
+                jira-->gant_service: error
+                gant_service-->api: {Success=false, Error="Ошибка получения задач..."}
+                api-->client --: 200 OK
+            end
+        end
+    end
+end
+
+@enduml

@@ -1,0 +1,14 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant view as "Views/Shared/Error.cshtml"
+end box
+
+client->api ++: GET /Home/Error
+api->api: requestId = Activity.Current?.Id\n            ?? TraceIdentifier
+api->view ++: render(ErrorViewModel{RequestId})
+view-->api --: HTML
+api-->client --: 200 OK + HTML\n(Cache-Control: no-store)
+
+@enduml

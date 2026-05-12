@@ -1,0 +1,14 @@
+=== Кэширование
+
+Сервис `csmhelper` не использует ни внешний (Redis, Memcached), ни in-process (`IMemoryCache`, `IDistributedCache`) кеш для бизнес-данных. Все запросы к Jira выполняются «вживую»:
+
+* `JiraService.SearchTasksAsync` шлёт `GET /rest/api/2/search` на каждый клик по «Найти» в `Cleanup`;
+* `GantService.FetchJiraTasksAsync` шлёт `GET /rest/api/2/search` на каждый запрос построения диаграммы Ганта;
+* `JiraService.GetTransitionsAsync`, `GetCurrentStatusAsync` тоже идут вживую и для каждой задачи отдельно.
+
+Применяется только HTTP-уровневое управление кэшированием на стороне ASP.NET Core:
+
+* страницы ошибок (`HomeController.Error`, `TimerController.Error`) помечены `[ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]`, что транслируется в `Cache-Control: no-store`;
+* статика (`wwwroot/`) отдаётся через `app.UseStaticFiles()` с дефолтными настройками ASP.NET Core (валидация по `Last-Modified`/`ETag`).
+
+Сессии ASP.NET Core хранятся в in-memory store (по умолчанию) с `IdleTimeout = TimeSpan.FromMinutes(30)` (см. `Program.cs`). При перезапуске приложения все сессии теряются — пользователю потребуется заново выполнить `POST /Auth/Login`.

@@ -1,0 +1,13 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant view as "Views/Home/Index.cshtml"
+end box
+
+client->api ++: GET /
+api->view ++: render
+view-->api --: HTML
+api-->client --: 200 OK + HTML лендинга
+
+@enduml

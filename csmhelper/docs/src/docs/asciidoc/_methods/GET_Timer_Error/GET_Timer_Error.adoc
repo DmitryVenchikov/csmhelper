@@ -1,0 +1,20 @@
+=== `GET /Timer/Error` Страница ошибки раздела Timer
+
+
+==== Назначение
+Локальная страница ошибки раздела Timer. Помечена `[ResponseCache(Duration=0, NoStore=true)]`. Помимо рендера представления Error метод *логирует факт обращения* в `logs/timer_errors.log` и `logs/userlogs.txt`, что позволяет видеть, как часто пользователи попадают на error-page раздела.
+
+==== Схема работы
+[plantuml, "GET_Timer_Error","png"]
+----------
+include::GET_Timer_Error.puml[]
+----------
+
+==== Алгоритм работы
+. Система получает запрос `GET /Timer/Error`
+. Система формирует `errorId = Activity.Current?.Id ?? HttpContext.TraceIdentifier`
+. Система вызывает приватный `LogError("Error", $"Error page accessed. RequestId: {errorId}")`:
+.. Создаёт каталог `logs/` при отсутствии
+.. Дописывает строку `[<timestamp>] ERROR - Method: Error, IP: <ip>, Message: ..., Path: <path>` в `logs/timer_errors.log` и `logs/userlogs.txt`
+. Система рендерит представление `Views/Shared/Error.cshtml` (по соглашению) с моделью `ErrorViewModel { RequestId = errorId }`
+. Система возвращает HTML с HTTP-кодом = 200 OK и заголовками запрета кэширования (`Cache-Control: no-store`)

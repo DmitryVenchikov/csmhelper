@@ -1,0 +1,43 @@
+@startuml
+participant client as client
+box #LightBlue
+participant api as "csmhelper"
+participant jira_service as "JiraService"
+participant session as "HttpContext.Session"
+end box
+participant jira as "Jira REST API"
+
+client->api ++: POST /Jira/CreateTasks\nTaskCreationModel
+api->session: GetString("IsAuthenticated")
+alt не авторизован
+    api-->client: 200 OK\n{Success=false, Error="Требуется авторизация"}
+else ModelState invalid
+    api-->client: 200 OK\n{Success=false, Error="Неверные данные..."}
+else
+    api->jira_service ++: CreateLinkedTasksAsync(model)
+    jira_service->session: GetString(JiraUsername/JiraPassword)
+    opt CreateAnalysis
+        jira_service->jira: POST /rest/api/2/issue\nANALYSIS: <summary>
+        jira-->jira_service: created issue
+    end
+    opt CreateDev
+        jira_service->jira: POST /rest/api/2/issue\nDEV: <summary>
+        jira-->jira_service: created issue
+    end
+    opt CreateTest
+        jira_service->jira: POST /rest/api/2/issue\nTEST: <summary>
+        jira-->jira_service: created issue
+    end
+    loop для каждой пары соседних задач
+        jira_service->jira: POST /rest/api/2/issueLink\ntype=Blocks, in=i, out=i+1
+        jira-->jira_service: 2xx | error
+    end
+    alt success
+        jira_service-->api: {Success=true, TasksCreated=N,\n LinksCreated=M, Tasks=[...]}
+    else exception
+        jira_service-->api --: {Success=false, Error=...}
+    end
+    api-->client --: 200 OK\nTaskCreationResponse
+end
+
+@enduml
