@@ -70,17 +70,18 @@ namespace csmhelper.services
             var ws = _employee.WorkStart;
             var we = _employee.WorkEnd;
 
-            if (dt.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+            // Если день нерабочий (выходной или отпуск) — переносим на начало следующего рабочего дня
+            if (!_calc.IsWorkday(dt))
             {
                 var d = dt.Date.AddDays(1);
-                while (d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) d = d.AddDays(1);
+                while (!_calc.IsWorkday(d)) d = d.AddDays(1);
                 return d.Add(ws.ToTimeSpan());
             }
             if (t < ws) return dt.Date.Add(ws.ToTimeSpan());
             if (t >= we)
             {
                 var next = dt.Date.AddDays(1);
-                while (next.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) next = next.AddDays(1);
+                while (!_calc.IsWorkday(next)) next = next.AddDays(1);
                 return next.Add(ws.ToTimeSpan());
             }
             // Lunch

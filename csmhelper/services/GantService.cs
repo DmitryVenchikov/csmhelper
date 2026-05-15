@@ -46,6 +46,11 @@ namespace csmhelper.services
                     return Fail($"Неизвестная роль: {e.Role}");
                 }
 
+                var vacations = (e.Vacations ?? new List<GantVacationInput>())
+                    .Where(v => v.EndDate.Date >= v.StartDate.Date)
+                    .Select(v => (Start: v.StartDate.Date, End: v.EndDate.Date))
+                    .ToList();
+
                 employees.Add(new GantEmployee
                 {
                     Name = e.Name.Trim(),
@@ -55,6 +60,7 @@ namespace csmhelper.services
                     WorkEnd = ParseTime(e.WorkEnd),
                     LunchStart = ParseTime(e.LunchStart),
                     LunchEnd = ParseTime(e.LunchEnd),
+                    Vacations = vacations,
                 });
             }
 

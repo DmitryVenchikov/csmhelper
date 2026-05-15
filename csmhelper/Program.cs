@@ -7,11 +7,12 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
 builder.Services.AddHttpContextAccessor();
 
-// Регистрация сервисов
+// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 builder.Services.AddScoped<IJiraService, JiraService>();
 builder.Services.AddScoped<IGantService, GantService>();
+builder.Services.AddScoped<IGanttService, GanttService>();
 
-// Настройка сессий
+// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 builder.Services.AddSession(options =>
 {
     options.IdleTimeout = TimeSpan.FromMinutes(30);
@@ -27,11 +28,11 @@ builder.Services.AddHttpClient<IJiraService, JiraService>(client =>
 {
     ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
     {
-        // Для корпоративных сертификатов можно добавить дополнительную логику
+        // пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
         if (errors == System.Net.Security.SslPolicyErrors.None)
             return true;
 
-        // Или доверять определенным сертификатам
+        // пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         if (cert?.Issuer.Contains("alfaintra") == true)
             return true;
 
@@ -55,7 +56,7 @@ app.UseRouting();
 
 app.UseAuthorization();
 
-app.UseSession(); // Включаем поддержку сессий
+app.UseSession(); // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 
 app.MapControllerRoute(
     name: "default",

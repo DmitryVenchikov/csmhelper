@@ -15,7 +15,13 @@ namespace csmhelper.services
             _employee = employee;
         }
 
-        public bool IsWorkday(DateTime dt) => dt.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday);
+        public bool IsWorkday(DateTime dt)
+        {
+            if (dt.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) return false;
+            // День отпуска — не рабочий
+            if (_employee.IsOnVacation(dt)) return false;
+            return true;
+        }
 
         public bool IsWorkingHours(DateTime dt)
         {
