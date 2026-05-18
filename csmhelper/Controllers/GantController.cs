@@ -29,6 +29,30 @@ namespace csmhelper.Controllers
             return View();
         }
 
+        [HttpPost("ExportRoadmap")]
+        public IActionResult ExportRoadmap([FromBody] RoadmapExportRequest request)
+        {
+            if (!IsAuthenticated())
+                return Unauthorized();
+
+            if (request == null || request.Tasks == null || request.Tasks.Count == 0)
+                return BadRequest("Нет данных для экспорта. Сначала постройте диаграмму.");
+
+            try
+            {
+                var bytes = RoadmapExporter.Build(request.Tasks, request.Employees ?? new());
+                var filename = $"roadmap-{DateTime.Now:yyyyMMdd-HHmm}.xlsx";
+                return File(bytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    filename);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка экспорта роадмэпа");
+                return StatusCode(500, $"Ошибка экспорта: {ex.Message}");
+            }
+        }
+
         [HttpPost("Epics")]
         public async Task<IActionResult> Epics([FromBody] GantEpicsRequest request)
         {

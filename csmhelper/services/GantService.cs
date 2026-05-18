@@ -158,8 +158,9 @@ namespace csmhelper.services
 
                 var projectsStr = string.Join(", ", projects.Select(p => $"\"{p}\""));
                 var jql = $"project in ({projectsStr}) AND issuetype = Epic AND status not in (\"Closed\", \"Done\", \"Resolved\")";
-                // customfield_10005 — поле "Epic Name" в Jira Server
-                var fields = "key,summary,status,customfield_10005";
+                // customfield_10009 — поле "Epic Name" в этой инсталляции Jira Server
+                // (синхронно с IssueFields.EpicName в JiraService)
+                var fields = "key,summary,status,customfield_10009";
                 var url = $"/rest/api/2/search?jql={Uri.EscapeDataString(jql)}&fields={fields}&maxResults=500";
 
                 _logger.LogInformation($"Эпики JQL: {jql}");
@@ -185,7 +186,7 @@ namespace csmhelper.services
                     {
                         Key = i.Key ?? "",
                         Summary = i.Fields?.Summary ?? "",
-                        EpicName = i.Fields?.CustomField10005 as string ?? "",
+                        EpicName = i.Fields?.CustomField10009 as string ?? "",
                         Status = i.Fields?.Status?.Name ?? "",
                     })
                     .Where(e => !string.IsNullOrEmpty(e.Key))
@@ -327,7 +328,10 @@ namespace csmhelper.services
             var u = summary.ToUpperInvariant();
             if (u.Contains("[TEST]")) return "TEST";
             if (u.Contains("[DEV BACK]")) return "DEV BACK";
-            if (u.Contains("[DEV FRONT]")) return "DEV FRONT";
+            // Порядок важен: проверяем AM/AO раньше «общего» DEV FRONT,
+            // чтобы '[DEV FRONT AM]' не схлопнулся обратно в DEV FRONT.
+            if (u.Contains("[DEV FRONT AM]")) return "DEV FRONT AM";
+            if (u.Contains("[DEV FRONT AO]")) return "DEV FRONT AO";
             if (u.Contains("[SA]")) return "SA";
             return null;
         }
@@ -435,7 +439,8 @@ namespace csmhelper.services
             "tester" => GantRole.Tester,
             "analyst" => GantRole.Analyst,
             "backend_dev" => GantRole.BackendDev,
-            "frontend_dev" => GantRole.FrontendDev,
+            "frontend_am" => GantRole.FrontendAM,
+            "frontend_ao" => GantRole.FrontendAO,
             _ => null
         };
 
@@ -481,9 +486,9 @@ namespace csmhelper.services
             [JsonProperty("customfield_10372")]
             public object? CustomField10372 { get; set; }
 
-            // Epic Name (Jira Server) — используется при показе списка эпиков
-            [JsonProperty("customfield_10005")]
-            public object? CustomField10005 { get; set; }
+            // Epic Name в этой инсталляции Jira Server (см. JiraService.IssueFields.EpicName)
+            [JsonProperty("customfield_10009")]
+            public object? CustomField10009 { get; set; }
 
             [JsonProperty("status")]
             public JiraNamedObject? Status { get; set; }

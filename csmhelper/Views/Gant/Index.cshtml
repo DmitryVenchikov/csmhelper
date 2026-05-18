@@ -58,6 +58,9 @@
     }
     .stat-box .val { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
     .stat-box .lbl { font-size: .73rem; color: #6c757d; margin-top: .1rem; }
+    .stat-box.stat-cp { background: #ffe4e6; border-color: #f5c2c7; }
+    .stat-box.stat-cp .val { color: #b91c1c; }
+    .stat-box.stat-cp .lbl { color: #b91c1c; font-weight: 600; }
 
     /* Utilization bar */
     .util-wrap { background: #eef2f7; border-radius: 4px; height: 7px; margin-top: 3px; overflow: hidden; }
@@ -71,10 +74,23 @@
     .table td { font-size: .82rem; vertical-align: middle; }
     .badge-cp { background: #dc3545; color: #fff; font-size: .67rem; padding: .18em .4em; border-radius: 3px; }
 
+    /* Critical path — table */
+    .table tr.cp-row {
+        background: #ffe4e6 !important;
+        border-left: 3px solid #dc3545;
+    }
+    .table tr.cp-row td:first-child {
+        font-weight: 700;
+    }
+    .table tr.cp-row .cp-key {
+        color: #b91c1c !important;
+    }
+
     .type-badge { font-size: .7rem; padding: .18em .45em; border-radius: 3px; font-weight: 600; }
     .type-TEST     { background: #fde8e8; color: #b91c1c; }
     .type-DEVBACK  { background: #e3f2fd; color: #0d47a1; }
-    .type-DEVFRONT { background: #fff3e0; color: #bf360c; }
+    .type-DEVFRONT_AM { background: #e1f5fe; color: #01579b; }
+    .type-DEVFRONT_AO { background: #ede7f6; color: #4527a0; }
     .type-SA       { background: #e8f5e9; color: #1b5e20; }
 
     /* Loading */
@@ -263,9 +279,15 @@
         <div id="ganttCard" style="display:none" class="card mb-3">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>📅 Диаграмма Ганта</span>
-                <button class="btn btn-sm btn-outline-primary py-0 px-2" onclick="downloadSvg()">
-                    ⬇ SVG
-                </button>
+                <div class="d-flex gap-2">
+                    <button id="exportXlsxBtn" class="btn btn-sm btn-outline-success py-0 px-2"
+                            type="button" disabled onclick="downloadXlsx()" title="Выгрузить роадмэп в Excel">
+                        📥 XLSX
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary py-0 px-2" onclick="downloadSvg()">
+                        ⬇ SVG
+                    </button>
+                </div>
             </div>
             <div class="card-body p-2" style="overflow-x:auto">
                 <div id="ganttSvgContainer"></div>
@@ -298,14 +320,15 @@
 const DEFAULT_EMPLOYEES = [
     { name: 'Венчиков Дмитрий Андреевич',    role: 'analyst' },
     { name: 'Бородин Алексей Александрович', role: 'backend_dev' },
-    { name: 'Фещун Игорь Андреевич',         role: 'frontend_dev' },
+    { name: 'Фещун Игорь Андреевич',         role: 'frontend_am' },
     { name: 'Самохина Лилия Александровна',  role: 'tester' },
 ];
 
 const ROLES = [
     { value: 'analyst',      label: 'Аналитик' },
     { value: 'backend_dev',  label: 'Backend разработчик' },
-    { value: 'frontend_dev', label: 'Frontend разработчик' },
+    { value: 'frontend_am',  label: 'Frontend AM' },
+    { value: 'frontend_ao',  label: 'Frontend AO' },
     { value: 'tester',       label: 'Тестировщик' },
 ];
 
@@ -313,7 +336,8 @@ const ROLES = [
 const ROLE_COLORS = {
     analyst:      '#96CEB4',
     backend_dev:  '#4ECDC4',
-    frontend_dev: '#45B7D1',
+    frontend_am:  '#45B7D1',
+    frontend_ao:  '#7B5BD9',
     tester:       '#FF6B6B',
 };
 
@@ -453,6 +477,9 @@ function buildVacationMap() {
 }
 
 // ─── Generate ────────────────────────────────────────────────────
+// Последние полученные результаты — используются экспортом в Excel.
+let LAST_RESULT = null;
+
 async function generate() {
     hideAlert();
     const employees = getEmployees();
@@ -461,6 +488,18 @@ async function generate() {
     const projects = document.getElementById('jiraProjects').value
         .split(',').map(p => p.trim()).filter(Boolean);
     if (!projects.length) { showAlert('Укажите хотя бы один проект.'); return; }
+
+    // Сбрасываем предыдущий результат, чтобы было видно что строится заново под актуальный фильтр.
+    LAST_RESULT = null;
+    document.getElementById('ganttSvgContainer').innerHTML = '';
+    document.getElementById('tasksBody').innerHTML = '';
+    document.getElementById('utilBody').innerHTML = '';
+    document.getElementById('statsCards').innerHTML = '';
+    document.getElementById('statsSection').style.display = 'none';
+    document.getElementById('ganttCard').style.display = 'none';
+    document.getElementById('tasksCard').style.display = 'none';
+    const xlsxBtn = document.getElementById('exportXlsxBtn');
+    if (xlsxBtn) xlsxBtn.disabled = true;
 
     const payload = {
         jiraServer: document.getElementById('jiraServer').value.trim(),
@@ -501,15 +540,25 @@ function renderResults(data) {
     const { stats, scheduled, criticalPathKeys, utilization } = data;
     const cpSet = new Set(criticalPathKeys || []);
 
+    // Запоминаем результат для экспорта в Excel
+    LAST_RESULT = data;
+    const xlsxBtn = document.getElementById('exportXlsxBtn');
+    if (xlsxBtn) xlsxBtn.disabled = !(scheduled && scheduled.length);
+
     // Stats cards
+    const cpCount = (criticalPathKeys || []).length;
     document.getElementById('statsCards').innerHTML = [
         { v: stats.scheduledTasks,                          l: 'Задач' },
         { v: stats.totalStoryPoints,                        l: 'Story Points' },
         { v: (stats.totalWorkHours || 0).toFixed(1) + ' ч', l: 'Часов работы' },
         { v: fmtDate(stats.completionDate),                 l: 'Завершение' },
+        { v: cpCount,                                       l: 'Задач на крит. пути',
+          cls: cpCount ? 'stat-box stat-cp' : 'stat-box' },
+        { v: (stats.criticalSp ?? 0),                       l: 'SP на крит. пути',
+          cls: (stats.criticalSp ?? 0) > 0 ? 'stat-box stat-cp' : 'stat-box' },
     ].map(s => `
-        <div class="col-6 col-sm-3">
-          <div class="stat-box">
+        <div class="col-6 col-sm-2">
+          <div class="${s.cls || 'stat-box'}">
             <div class="val">${s.v ?? '—'}</div>
             <div class="lbl">${s.l}</div>
           </div>
@@ -538,15 +587,26 @@ function renderResults(data) {
 
     // Tasks table
     const typeLabel = t => {
-        const map = { 'TEST':'type-TEST TEST','DEV BACK':'type-DEVBACK BACK','DEV FRONT':'type-DEVFRONT FRONT','SA':'type-SA SA' };
-        const [cls, txt] = (map[t] || `type-SA ${t}`).split(' ');
+        // ВАЖНО: тут используется разделитель «|» в значении, потому что текст бейджа
+        // содержит пробелы (например «FRONT AM»). Раньше split(' ') ломал такие надписи.
+        const map = {
+            'TEST'         : 'type-TEST|TEST',
+            'DEV BACK'     : 'type-DEVBACK|BACK',
+            'DEV FRONT AM' : 'type-DEVFRONT_AM|FRONT AM',
+            'DEV FRONT AO' : 'type-DEVFRONT_AO|FRONT AO',
+            'SA'           : 'type-SA|SA',
+        };
+        const raw = map[t] || `type-SA|${t}`;
+        const [cls, txt] = raw.split('|');
         return `<span class="type-badge ${cls}">${txt}</span>`;
     };
 
     document.getElementById('tasksBody').innerHTML = scheduled.map(t => {
-        const cp = cpSet.has(t.key) ? ' <span class="badge-cp">КП</span>' : '';
-        return `<tr ${cpSet.has(t.key) ? 'style="background:#fff5f5"' : ''}>
-          <td><a href="${t.link}" target="_blank" class="fw-semibold text-primary">${t.key}</a>${cp}</td>
+        const isCp = cpSet.has(t.key);
+        const cpBadge = isCp ? ' <span class="badge-cp">КП</span>' : '';
+        const keyCls  = isCp ? 'fw-bold cp-key' : 'fw-semibold text-primary';
+        return `<tr class="${isCp ? 'cp-row' : ''}">
+          <td><a href="${t.link}" target="_blank" class="${keyCls}">${isCp ? '★ ' : ''}${t.key}</a>${cpBadge}</td>
           <td>${typeLabel(t.taskType)}</td>
           <td>${t.storyPoints}</td>
           <td class="text-muted">${fmtDt(t.scheduledStart)}</td>
@@ -620,8 +680,13 @@ function buildGanttSvg(tasks, cpSet) {
         const role   = ROLE_BY_NAME[t.assignedResource] || 'backend_dev';
         const color  = isCp ? '#dc3545' : (ROLE_COLORS[role] || '#95A5A6');
 
-        // Row bg
-        lines.push(`<rect x="0" y="${y}" width="${LABEL_W + CHART_W}" height="${ROW_H}" fill="${i%2===0?'#fafbfc':'#fff'}"/>`);
+        // Row bg — для критических задач делаем выраженно-красный фон строки
+        const rowBg = isCp ? '#ffe4e6' : (i%2===0 ? '#fafbfc' : '#fff');
+        lines.push(`<rect x="0" y="${y}" width="${LABEL_W + CHART_W}" height="${ROW_H}" fill="${rowBg}"/>`);
+        if (isCp) {
+            // Левая полоса-индикатор крит. пути
+            lines.push(`<rect x="0" y="${y}" width="3" height="${ROW_H}" fill="#dc3545"/>`);
+        }
 
         // Vacation overlays for this task's assignee — отрисовываются под баром задачи
         const vacs = VAC_BY_NAME[t.assignedResource] || [];
@@ -640,10 +705,12 @@ function buildGanttSvg(tasks, cpSet) {
         });
 
         // Task key label
-        lines.push(`<text x="${LABEL_W - 4}" y="${y + ROW_H/2 + 4}" font-size="10" fill="#374151" text-anchor="end" font-weight="${isCp?'bold':'normal'}">${t.key}</text>`);
+        lines.push(`<text x="${LABEL_W - 4}" y="${y + ROW_H/2 + 4}" font-size="10" fill="${isCp?'#b91c1c':'#374151'}" text-anchor="end" font-weight="${isCp?'bold':'normal'}">${isCp ? '★ ' : ''}${t.key}</text>`);
 
-        // Bar
-        lines.push(`<rect x="${x1}" y="${y+5}" width="${bw}" height="${ROW_H-10}" rx="3" fill="${color}" opacity="0.85"/>`);
+        // Bar — для крит. пути делаем жирную тёмную обводку и полную непрозрачность
+        const barOpacity  = isCp ? '1.0' : '0.85';
+        const barStroke   = isCp ? ' stroke="#7f1d1d" stroke-width="1.5"' : '';
+        lines.push(`<rect x="${x1}" y="${y+5}" width="${bw}" height="${ROW_H-10}" rx="3" fill="${color}" opacity="${barOpacity}"${barStroke}/>`);
 
         // Bar label
         if (bw > 30) {
@@ -656,7 +723,7 @@ function buildGanttSvg(tasks, cpSet) {
             lines.push(`<polygon points="${dx},${y+3} ${dx-4},${y+12} ${dx+4},${y+12}" fill="#dc3545" opacity="0.7"/>`);
         }
 
-        // Dependency arrows
+        // Dependency arrows — стрелки между критическими задачами рисуем красным и жирнее
         (t.blockedBy || []).forEach(bk => {
             const blocker = tasks.find(tt => tt.key === bk);
             if (!blocker) return;
@@ -665,7 +732,13 @@ function buildGanttSvg(tasks, cpSet) {
             const ay1 = HEADER + bj * ROW_H + ROW_H / 2;
             const ax2 = x1;
             const ay2 = y + ROW_H / 2;
-            lines.push(`<path d="M${ax1},${ay1} C${ax1+20},${ay1} ${ax2-20},${ay2} ${ax2},${ay2}" fill="none" stroke="#aaa" stroke-width="1" marker-end="url(#arr)" opacity="0.6"/>`);
+            const blockerIsCp = cpSet.has(blocker.key);
+            const arrowCp = isCp && blockerIsCp;
+            const arrowColor   = arrowCp ? '#dc3545' : '#aaa';
+            const arrowWidth   = arrowCp ? 2 : 1;
+            const arrowOpacity = arrowCp ? 0.9 : 0.6;
+            const arrowMarker  = arrowCp ? 'url(#arr-cp)' : 'url(#arr)';
+            lines.push(`<path d="M${ax1},${ay1} C${ax1+20},${ay1} ${ax2-20},${ay2} ${ax2},${ay2}" fill="none" stroke="${arrowColor}" stroke-width="${arrowWidth}" marker-end="${arrowMarker}" opacity="${arrowOpacity}"/>`);
         });
     });
 
@@ -674,6 +747,9 @@ function buildGanttSvg(tasks, cpSet) {
   <defs>
     <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
       <path d="M0,0 L6,3 L0,6 Z" fill="#aaa"/>
+    </marker>
+    <marker id="arr-cp" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#dc3545"/>
     </marker>
   </defs>
   ${lines.join('\n  ')}
@@ -698,6 +774,43 @@ function downloadSvg() {
     a.href = URL.createObjectURL(blob);
     a.download = 'gantt.svg';
     a.click();
+}
+
+async function downloadXlsx() {
+    if (!LAST_RESULT || !LAST_RESULT.scheduled || !LAST_RESULT.scheduled.length) {
+        showAlert('Сначала постройте диаграмму, потом выгружайте.'); return;
+    }
+    const btn = document.getElementById('exportXlsxBtn');
+    const original = btn.textContent;
+    btn.disabled = true; btn.textContent = '⏳ XLSX…';
+    try {
+        const payload = {
+            tasks: LAST_RESULT.scheduled,
+            employees: getEmployees(),
+        };
+        const res = await fetch('/Gant/ExportRoadmap', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+        const blob = await res.blob();
+        const cd = res.headers.get('Content-Disposition') || '';
+        const m = cd.match(/filename="?([^";]+)"?/i);
+        const filename = (m && m[1]) || `roadmap-${new Date().toISOString().slice(0,10)}.xlsx`;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) {
+        showAlert('Ошибка выгрузки XLSX: ' + e.message);
+    } finally {
+        btn.textContent = original;
+        btn.disabled = !(LAST_RESULT && LAST_RESULT.scheduled && LAST_RESULT.scheduled.length);
+    }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────

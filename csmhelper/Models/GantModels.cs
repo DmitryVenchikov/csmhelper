@@ -52,12 +52,24 @@ namespace csmhelper.Models
         public List<GantEpic> Epics { get; set; } = new();
     }
 
+    // ─── Roadmap export ───────────────────────────────────────────
+
+    /// <summary>
+    /// Запрос на выгрузку роадмэпа: запланированные задачи (как они отрисованы на диаграмме)
+    /// + список сотрудников для цветовой кодировки баров и отметки отпусков.
+    /// </summary>
+    public class RoadmapExportRequest
+    {
+        public List<GantScheduledTask> Tasks { get; set; } = new();
+        public List<GantEmployeeInput> Employees { get; set; } = new();
+    }
+
     public class GantEmployeeInput
     {
         [Required]
         public string Name { get; set; }
 
-        /// <summary>tester | analyst | backend_dev | frontend_dev</summary>
+        /// <summary>tester | analyst | backend_dev | frontend_am | frontend_ao</summary>
         [Required]
         public string Role { get; set; }
 
@@ -147,7 +159,7 @@ namespace csmhelper.Models
 
     // ─── Internal domain objects ──────────────────────────────────
 
-    public enum GantRole { Tester, Analyst, BackendDev, FrontendDev }
+    public enum GantRole { Tester, Analyst, BackendDev, FrontendAM, FrontendAO }
 
     public class GantEmployee
     {
@@ -178,7 +190,8 @@ namespace csmhelper.Models
         {
             "TEST" => Role == GantRole.Tester,
             "DEV BACK" => Role == GantRole.BackendDev,
-            "DEV FRONT" => Role == GantRole.FrontendDev,
+            "DEV FRONT AM" => Role == GantRole.FrontendAM,
+            "DEV FRONT AO" => Role == GantRole.FrontendAO,
             "SA" => Role == GantRole.Analyst,
             _ => false
         };

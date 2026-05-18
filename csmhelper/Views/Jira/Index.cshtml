@@ -131,7 +131,49 @@
 
 .analysis-badge { background-color: #17a2b8; color: white; }
 .dev-badge { background-color: #28a745; color: white; }
+.dev-back-badge { background-color: #1976d2; color: white; }
+.dev-front-am-badge { background-color: #6f42c1; color: white; }
+.dev-front-ao-badge { background-color: #b62af0; color: white; }
 .test-badge { background-color: #ffc107; color: #212529; }
+
+/* Epic picker */
+.epic-picker-list {
+    max-height: 240px; overflow-y: auto;
+    border: 1px solid #dee2e6; border-radius: 5px;
+    background: #fff;
+}
+.epic-pick-row {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .35rem .6rem; border-bottom: 1px solid #f0f0f0;
+    font-size: .88rem; cursor: pointer;
+}
+.epic-pick-row:last-child { border-bottom: none; }
+.epic-pick-row:hover { background: #f7faff; }
+.epic-pick-row input[type=radio] { margin: 0; flex-shrink: 0; }
+.epic-pick-row .pk-name {
+    flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-weight: 500; color: #1f2937;
+}
+.epic-pick-row .pk-key {
+    font-family: 'Consolas', monospace; font-weight: 600;
+    color: #1976d2; flex-shrink: 0; min-width: 92px; text-align: right;
+}
+.epic-pick-row .pk-summary {
+    color: #6c757d; font-size: .76rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 35%;
+}
+.epic-pick-row .pk-status {
+    font-size: .7rem; padding: .1em .4em; border-radius: 3px;
+    background: #eef2f7; color: #6c757d; flex-shrink: 0;
+}
+.epic-pick-row.selected { background: #e7f3ff; }
+
+.selected-epic-banner {
+    font-size: .85rem; padding: .35rem .6rem;
+    background: #e7f3ff; border: 1px solid #b6daff;
+    border-radius: 4px; margin-top: .35rem;
+}
 </style>
 
 <div class="container">
@@ -159,18 +201,28 @@
                 <div class="text-center mb-3">
                     <small class="text-muted">Блокирующие связи между задачами</small>
                 </div>
-                <div class="d-flex justify-content-center align-items-center flex-wrap">
-                    <div class="task-step text-center p-3 active" id="analysisStep">
+                <div class="d-flex justify-content-center align-items-center flex-wrap" id="flowDiagram">
+                    <div class="task-step text-center p-2 active" id="analysisStep">
                         <div class="fw-bold text-info">Аналитика</div>
                         <small class="text-muted">Создает ТЗ</small>
                     </div>
-                    <div class="connection-arrow">→ БЛОКИРУЕТ →</div>
-                    <div class="task-step text-center p-3 active" id="devStep">
-                        <div class="fw-bold text-success">Разработка</div>
-                        <small class="text-muted">Реализует функционал</small>
+                    <div class="connection-arrow flow-arrow">→</div>
+                    <div class="task-step text-center p-2 active" id="devBackStep">
+                        <div class="fw-bold" style="color:#1976d2">Backend</div>
+                        <small class="text-muted">Серверная часть</small>
                     </div>
-                    <div class="connection-arrow">→ БЛОКИРУЕТ →</div>
-                    <div class="task-step text-center p-3 active" id="testStep">
+                    <div class="connection-arrow flow-arrow">→</div>
+                    <div class="task-step text-center p-2" id="devFrontAMStep">
+                        <div class="fw-bold" style="color:#6f42c1">Front AM</div>
+                        <small class="text-muted">Frontend AM</small>
+                    </div>
+                    <div class="connection-arrow flow-arrow">→</div>
+                    <div class="task-step text-center p-2" id="devFrontAOStep">
+                        <div class="fw-bold" style="color:#b62af0">Front AO</div>
+                        <small class="text-muted">Frontend AO</small>
+                    </div>
+                    <div class="connection-arrow flow-arrow">→</div>
+                    <div class="task-step text-center p-2 active" id="testStep">
                         <div class="fw-bold text-warning">Тестирование</div>
                         <small class="text-muted">Проверяет качество</small>
                     </div>
@@ -182,7 +234,13 @@
                     <div class="col-md-6">
                         <div class="mb-3">
                             <label for="projectKey" class="form-label">Ключ проекта JIRA:</label>
-                            <input type="text" class="form-control" id="projectKey" name="projectKey" placeholder="Например: SCRUM, DUMBLDOR" required>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="projectKey" name="projectKey"
+                                       placeholder="Например: SCRUM, DUMBLDOR" required>
+                                <button class="btn btn-outline-primary" type="button" id="loadEpicsBtn">
+                                    🔄 Эпики
+                                </button>
+                            </div>
                             <div class="form-text">Укажите ключ проекта, в котором создавать задачи</div>
                         </div>
                     </div>
@@ -197,9 +255,21 @@
                                     </label>
                                 </div>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="createDev" name="createDev" checked>
-                                    <label class="form-check-label" for="createDev">
-                                        <span class="badge bg-success">DEV</span> Разработка
+                                    <input class="form-check-input" type="checkbox" id="createDevBackend" name="createDevBackend" checked>
+                                    <label class="form-check-label" for="createDevBackend">
+                                        <span class="badge" style="background:#1976d2">DEV BACK</span> Разработка (Backend)
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="createDevFrontAM" name="createDevFrontAM">
+                                    <label class="form-check-label" for="createDevFrontAM">
+                                        <span class="badge" style="background:#6f42c1">DEV FRONT AM</span> Разработка (Frontend AM)
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="createDevFrontAO" name="createDevFrontAO">
+                                    <label class="form-check-label" for="createDevFrontAO">
+                                        <span class="badge" style="background:#b62af0">DEV FRONT AO</span> Разработка (Frontend AO)
                                     </label>
                                 </div>
                                 <div class="form-check">
@@ -211,6 +281,22 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- Epic picker -->
+                <div class="mb-3">
+                    <label class="form-label">
+                        🎯 Эпик <span class="text-danger">*</span>
+                        <small class="text-muted">— все создаваемые задачи будут прикреплены к выбранному эпику</small>
+                    </label>
+                    <div id="epicsHint" class="text-muted small mb-2">
+                        Укажите ключ проекта выше и нажмите «Эпики», чтобы подгрузить список эпиков из JIRA.
+                    </div>
+                    <input id="epicSearch" type="text" class="form-control form-control-sm mb-2"
+                           placeholder="🔎 Поиск по ключу или названию…" oninput="filterEpicsList()"
+                           style="display:none">
+                    <div id="epicsList" class="epic-picker-list" style="display:none"></div>
+                    <div id="selectedEpicBanner" class="selected-epic-banner" style="display:none"></div>
                 </div>
 
                 <div class="mb-3">
@@ -353,11 +439,16 @@ function displayCreatedTasks(tasks, tasksCreated, linksCreated) {
             
             // Определяем класс для бейджа в зависимости от типа задачи
             let badgeClass = 'task-type-badge ';
-            if (task.type && task.type.includes('ANALYSIS')) {
+            const t = (task.type || '').toUpperCase();
+            if (t.includes('ANALYSIS')) {
                 badgeClass += 'analysis-badge';
-            } else if (task.type && task.type.includes('DEV')) {
-                badgeClass += 'dev-badge';
-            } else if (task.type && task.type.includes('TEST')) {
+            } else if (t.includes('DEV FRONT AM')) {
+                badgeClass += 'dev-front-am-badge';
+            } else if (t.includes('DEV FRONT AO')) {
+                badgeClass += 'dev-front-ao-badge';
+            } else if (t.includes('DEV BACK') || t === 'DEV') {
+                badgeClass += 'dev-back-badge';
+            } else if (t.includes('TEST')) {
                 badgeClass += 'test-badge';
             } else {
                 badgeClass += 'bg-secondary';
@@ -412,29 +503,27 @@ function copyToClipboard(text) {
         document.body.removeChild(textArea);
     });
 }
-        // Обновление визуализации потока задач
+        // Обновление визуализации потока задач (поэтапная цепочка с пропуском неактивных)
+        // Цепочка: Аналитика → Backend → Front AM → Front AO → Тестирование.
         function updateTaskFlow() {
-            const analysisChecked = document.getElementById('createAnalysis').checked;
-            const devChecked = document.getElementById('createDev').checked;
-            const testChecked = document.getElementById('createTest').checked;
+            const steps = [
+                { id: 'analysisStep',    enabled: document.getElementById('createAnalysis').checked },
+                { id: 'devBackStep',     enabled: document.getElementById('createDevBackend').checked },
+                { id: 'devFrontAMStep',  enabled: document.getElementById('createDevFrontAM').checked },
+                { id: 'devFrontAOStep',  enabled: document.getElementById('createDevFrontAO').checked },
+                { id: 'testStep',        enabled: document.getElementById('createTest').checked },
+            ];
+            steps.forEach(s => document.getElementById(s.id)?.classList.toggle('active', s.enabled));
 
-            document.getElementById('analysisStep').classList.toggle('active', analysisChecked);
-            document.getElementById('devStep').classList.toggle('active', devChecked);
-            document.getElementById('testStep').classList.toggle('active', testChecked);
-
-            // Показываем/скрываем стрелки в зависимости от выбранных задач
-            const arrows = document.querySelectorAll('.connection-arrow');
-            if (analysisChecked && devChecked) {
-                arrows[0].style.display = 'block';
-            } else {
-                arrows[0].style.display = 'none';
-            }
-
-            if (devChecked && testChecked) {
-                arrows[1].style.display = 'block';
-            } else {
-                arrows[1].style.display = 'none';
-            }
+            // Стрелки между активными шагами — между парами active соседей по списку (с пропуском неактивных)
+            const arrows = document.querySelectorAll('.flow-arrow');
+            // Размещаем по логике: arrows[i] — стрелка между steps[i] и steps[i+1].
+            arrows.forEach((a, i) => {
+                // Стрелка нужна, если есть активный левый сосед (или левее) и активный правый сосед (или правее).
+                const leftActive  = steps.slice(0, i + 1).some(s => s.enabled);
+                const rightActive = steps.slice(i + 1).some(s => s.enabled);
+                a.style.visibility = (leftActive && rightActive) ? 'visible' : 'hidden';
+            });
         }
 
         // Инициализация при загрузке страницы
@@ -445,7 +534,145 @@ function copyToClipboard(text) {
             document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
                 checkbox.addEventListener('change', updateTaskFlow);
             });
+
+            // Загрузка эпиков
+            document.getElementById('loadEpicsBtn').addEventListener('click', loadProjectEpics);
+            // При смене проекта — сбрасываем выбранный эпик и список
+            document.getElementById('projectKey').addEventListener('input', () => {
+                if (EPICS_LIST.length || SELECTED_EPIC) clearEpicsState('Ключ проекта изменился — нажмите «Эпики», чтобы обновить список.');
+            });
         });
+
+        // ── Epic picker state ─────────────────────────────────────
+        let EPICS_LIST = [];     // [{ key, summary, epicName, status }]
+        let SELECTED_EPIC = null; // ключ выбранного эпика
+
+        async function loadProjectEpics() {
+            const projectKey = document.getElementById('projectKey').value.trim();
+            if (!projectKey) {
+                showMessage('Сначала укажите ключ проекта JIRA.', 'error');
+                return;
+            }
+            const hint = document.getElementById('epicsHint');
+            const btn  = document.getElementById('loadEpicsBtn');
+            btn.disabled = true; const orig = btn.textContent; btn.textContent = '⏳';
+            hint.textContent = 'Загружаю эпики из JIRA…'; hint.style.display = '';
+
+            try {
+                const res = await fetch('/Jira/Epics', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projectKey })
+                });
+                const data = await res.json();
+                if (!data.success) {
+                    hint.textContent = 'Не удалось загрузить эпики.';
+                    showMessage('❌ ' + (data.error || 'Ошибка загрузки эпиков'), 'error');
+                    return;
+                }
+                EPICS_LIST = data.epics || [];
+                SELECTED_EPIC = null;
+                renderEpicsList();
+            } catch (e) {
+                hint.textContent = 'Сетевая ошибка при загрузке эпиков.';
+                showMessage('❌ ' + e.message, 'error');
+            } finally {
+                btn.disabled = false; btn.textContent = orig;
+            }
+        }
+
+        function renderEpicsList() {
+            const list = document.getElementById('epicsList');
+            const hint = document.getElementById('epicsHint');
+            const search = document.getElementById('epicSearch');
+            const banner = document.getElementById('selectedEpicBanner');
+
+            if (!EPICS_LIST.length) {
+                list.style.display = 'none';
+                search.style.display = 'none';
+                hint.style.display = '';
+                hint.textContent = 'Эпики не найдены в этом проекте.';
+                banner.style.display = 'none';
+                return;
+            }
+            hint.style.display = 'none';
+            search.style.display = '';
+            list.style.display = '';
+
+            const q = (search.value || '').toLowerCase().trim();
+            const filtered = q
+                ? EPICS_LIST.filter(e =>
+                    (e.key || '').toLowerCase().includes(q) ||
+                    (e.summary || '').toLowerCase().includes(q) ||
+                    (e.epicName || '').toLowerCase().includes(q))
+                : EPICS_LIST;
+
+            list.innerHTML = filtered.map(e => {
+                // Имя эпика — в первой колонке (название из поля "Epic Name"); если оно пустое,
+                // подставляем Summary. Если есть и то и другое и они различаются — показываем
+                // Summary отдельной серой подписью справа от имени.
+                const epicName = (e.epicName && e.epicName.trim()) || (e.summary || '');
+                const summarySecondary = e.epicName && e.summary && e.epicName !== e.summary
+                    ? `<span class="pk-summary">— ${escapeHtmlJira(e.summary)}</span>`
+                    : '';
+                const isSel = e.key === SELECTED_EPIC;
+                return `
+                <label class="epic-pick-row ${isSel ? 'selected' : ''}">
+                    <input type="radio" name="epicRadio" value="${escapeHtmlJira(e.key)}"
+                           ${isSel ? 'checked' : ''} onchange="onEpicRadio(this)">
+                    <span class="pk-name">${escapeHtmlJira(epicName)}</span>
+                    ${summarySecondary}
+                    ${e.status ? `<span class="pk-status">${escapeHtmlJira(e.status)}</span>` : ''}
+                    <span class="pk-key">${escapeHtmlJira(e.key)}</span>
+                </label>`;
+            }).join('');
+
+            if (filtered.length === 0)
+                list.innerHTML = '<div class="text-muted small p-2 text-center">Ничего не найдено по запросу</div>';
+
+            updateSelectedEpicBanner();
+        }
+
+        function onEpicRadio(input) {
+            SELECTED_EPIC = input.value || null;
+            // Обновим CSS-выделение без полной перерисовки списка
+            document.querySelectorAll('.epic-pick-row').forEach(r => {
+                r.classList.toggle('selected', r.querySelector('input[type=radio]')?.value === SELECTED_EPIC);
+            });
+            updateSelectedEpicBanner();
+        }
+
+        function filterEpicsList() {
+            renderEpicsList();
+        }
+
+        function updateSelectedEpicBanner() {
+            const banner = document.getElementById('selectedEpicBanner');
+            if (!SELECTED_EPIC) { banner.style.display = 'none'; return; }
+            const e = EPICS_LIST.find(x => x.key === SELECTED_EPIC);
+            if (!e) { banner.style.display = 'none'; return; }
+            banner.style.display = '';
+            const title = escapeHtmlJira(e.epicName || e.summary || '');
+            banner.innerHTML = `Выбран эпик: <strong>${title}</strong> <span class="text-muted">(${escapeHtmlJira(e.key)})</span>`;
+        }
+
+        function clearEpicsState(hintText) {
+            EPICS_LIST = []; SELECTED_EPIC = null;
+            document.getElementById('epicsList').innerHTML = '';
+            document.getElementById('epicsList').style.display = 'none';
+            document.getElementById('epicSearch').style.display = 'none';
+            document.getElementById('epicSearch').value = '';
+            document.getElementById('selectedEpicBanner').style.display = 'none';
+            const hint = document.getElementById('epicsHint');
+            hint.style.display = '';
+            hint.textContent = hintText || 'Укажите ключ проекта выше и нажмите «Эпики», чтобы подгрузить список эпиков из JIRA.';
+        }
+
+        function escapeHtmlJira(s) {
+            return String(s ?? '')
+                .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        }
 
 // Обработчик кнопки "Скопировать ссылки"
 document.getElementById('copyLinksBtn').addEventListener('click', function() {
@@ -465,16 +692,21 @@ document.getElementById('copyLinksBtn').addEventListener('click', function() {
 document.getElementById('createMoreBtn').addEventListener('click', function() {
     document.getElementById('createdTasks').classList.add('d-none');
     document.getElementById('taskForm').reset();
-    
-    // Восстанавливаем чекбоксы в выбранное состояние
+
+    // Восстанавливаем чекбоксы в выбранное состояние по умолчанию
     document.getElementById('createAnalysis').checked = true;
-    document.getElementById('createDev').checked = true;
+    document.getElementById('createDevBackend').checked = true;
+    document.getElementById('createDevFrontAM').checked = false;
+    document.getElementById('createDevFrontAO').checked = false;
     document.getElementById('createTest').checked = true;
     updateTaskFlow();
-    
+
+    // Сбрасываем выбор эпика — нужно подгрузить заново под текущий проект
+    clearEpicsState();
+
     // Прокручиваем к форме
     document.getElementById('taskForm').scrollIntoView({ behavior: 'smooth' });
-    
+
     // Скрываем предыдущее сообщение
     document.getElementById('statusMessage').classList.add('d-none');
 });
@@ -484,12 +716,15 @@ document.getElementById('createMoreBtn').addEventListener('click', function() {
             e.preventDefault();
 
             // Получаем значения из формы
-            const projectKey = document.getElementById('projectKey').value;
-            const summary = document.getElementById('summary').value;
-            const description = document.getElementById('description').value;
-            const createAnalysis = document.getElementById('createAnalysis').checked;
-            const createDev = document.getElementById('createDev').checked;
-            const createTest = document.getElementById('createTest').checked;
+            const projectKey       = document.getElementById('projectKey').value;
+            const summary          = document.getElementById('summary').value;
+            const description      = document.getElementById('description').value;
+            const createAnalysis   = document.getElementById('createAnalysis').checked;
+            const createDevBackend = document.getElementById('createDevBackend').checked;
+            const createDevFrontAM = document.getElementById('createDevFrontAM').checked;
+            const createDevFrontAO = document.getElementById('createDevFrontAO').checked;
+            const createTest       = document.getElementById('createTest').checked;
+            const epicKey          = SELECTED_EPIC;
 
             // Валидация обязательных полей
             if (!projectKey || !summary || !description) {
@@ -497,8 +732,14 @@ document.getElementById('createMoreBtn').addEventListener('click', function() {
                 return;
             }
 
+            // Эпик обязателен
+            if (!epicKey) {
+                showMessage('Выберите эпик из списка (нажмите «Эпики» рядом с ключом проекта)', 'error');
+                return;
+            }
+
             // Валидация - хотя бы одна задача должна быть выбрана
-            if (!createAnalysis && !createDev && !createTest) {
+            if (!createAnalysis && !createDevBackend && !createDevFrontAM && !createDevFrontAO && !createTest) {
                 showMessage('Выберите хотя бы один тип задачи для создания', 'error');
                 return;
             }
@@ -507,29 +748,28 @@ document.getElementById('createMoreBtn').addEventListener('click', function() {
                 showMessage('Создание задач в JIRA...', 'warning');
                 toggleCreateButton(true);
 
-                // Формируем объект данных правильно
                 const requestData = {
-                    projectKey: projectKey,
-                    summary: summary,
-                    description: description,
-                    createAnalysis: createAnalysis,
-                    createDev: createDev,
-                    createTest: createTest
+                    projectKey,
+                    summary,
+                    description,
+                    epicKey,
+                    createAnalysis,
+                    createDevBackend,
+                    createDevFrontAM,
+                    createDevFrontAO,
+                    createTest,
                 };
 
-                console.log('Sending data:', requestData); // Для отладки
+                console.log('Sending data:', requestData);
 
                 const response = await fetch('/Jira/CreateTasks', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(requestData)
                 });
 
                 const result = await response.json();
-
-                console.log('Create tasks response:', result); // Для отладки
+                console.log('Create tasks response:', result);
 
                 if (result.success) {
                     showMessage(`✅ Успешно создано ${result.tasksCreated} задач с ${result.linksCreated} блокирующими связями!`, 'success');
@@ -540,12 +780,9 @@ document.getElementById('createMoreBtn').addEventListener('click', function() {
                         showMessage('Задачи созданы, но не удалось получить информацию о них', 'warning');
                     }
 
-                    // Очищаем форму после успешного создания
-                    this.reset();
-                    // Восстанавливаем чекбоксы в выбранное состояние
-                    document.getElementById('createAnalysis').checked = true;
-                    document.getElementById('createDev').checked = true;
-                    document.getElementById('createTest').checked = true;
+                    // Очищаем только текстовые поля; чекбоксы и эпик оставляем — часто создают серию.
+                    document.getElementById('summary').value = '';
+                    document.getElementById('description').value = '';
                     updateTaskFlow();
                 } else {
                     showMessage('❌ ' + (result.error || 'Ошибка при создании задач'), 'error');

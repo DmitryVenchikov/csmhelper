@@ -11,5 +11,6 @@ namespace csmhelper.services
         Task<TaskCreationResponse> CreateLinkedTasksAsync(TaskCreationModel model);
         Task<List<ProcessResult>> ProcessTasksAsync(List<string> taskKeys, string actionType, string targetStatus, string resolution);
         Task<List<JiraTask>> SearchTasksAsync(CleanupFilterModel filters);
+        Task<JiraEpicsResponse> GetEpicsByProjectAsync(string projectKey);
     }
 }

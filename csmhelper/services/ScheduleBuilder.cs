@@ -435,7 +435,8 @@ namespace csmhelper.services
             GantRole.Tester => "Тестировщик",
             GantRole.Analyst => "Аналитик",
             GantRole.BackendDev => "Backend разработчик",
-            GantRole.FrontendDev => "Frontend разработчик",
+            GantRole.FrontendAM => "Frontend AM",
+            GantRole.FrontendAO => "Frontend AO",
             _ => role.ToString()
         };
     }
