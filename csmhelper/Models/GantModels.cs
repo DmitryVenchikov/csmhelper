@@ -14,10 +14,42 @@ namespace csmhelper.Models
 
         public bool VerifySsl { get; set; } = false;
 
+        /// <summary>
+        /// Если задано — расписание строится только по задачам, прикреплённым к этим эпикам
+        /// (через JQL "Epic Link" in (...)). Если пусто — берутся все задачи проекта.
+        /// </summary>
+        public List<string> EpicKeys { get; set; } = new();
+
         [Required]
         public List<GantEmployeeInput> Employees { get; set; } = new();
 
         public GantScheduleSettings Schedule { get; set; } = new();
+    }
+
+    // ─── Epics ────────────────────────────────────────────────────
+
+    public class GantEpicsRequest
+    {
+        [Required]
+        public string JiraServer { get; set; } = "https://jira.moscow.alfaintra.net";
+
+        [Required]
+        public List<string> Projects { get; set; } = new();
+    }
+
+    public class GantEpic
+    {
+        public string Key { get; set; } = "";
+        public string Summary { get; set; } = "";
+        public string EpicName { get; set; } = "";
+        public string Status { get; set; } = "";
+    }
+
+    public class GantEpicsResponse
+    {
+        public bool Success { get; set; }
+        public string? Error { get; set; }
+        public List<GantEpic> Epics { get; set; } = new();
     }
 
     public class GantEmployeeInput
@@ -34,6 +66,18 @@ namespace csmhelper.Models
         public string WorkEnd { get; set; } = "18:00";
         public string LunchStart { get; set; } = "13:00";
         public string LunchEnd { get; set; } = "14:00";
+
+        /// <summary>Периоды отпуска (включительные даты) — рабочее время в эти дни пропускается планировщиком</summary>
+        public List<GantVacationInput> Vacations { get; set; } = new();
+    }
+
+    public class GantVacationInput
+    {
+        /// <summary>Дата начала отпуска (включительно)</summary>
+        public DateTime StartDate { get; set; }
+        /// <summary>Дата окончания отпуска (включительно)</summary>
+        public DateTime EndDate { get; set; }
+        public string Note { get; set; } = string.Empty;
     }
 
     public class GantScheduleSettings
@@ -115,8 +159,20 @@ namespace csmhelper.Models
         public TimeOnly LunchStart { get; set; } = new(13, 0);
         public TimeOnly LunchEnd { get; set; } = new(14, 0);
 
+        /// <summary>Периоды отпуска (Start..End включительно)</summary>
+        public List<(DateTime Start, DateTime End)> Vacations { get; set; } = new();
+
         public double WorkHoursPerDay =>
             (WorkEnd.Hour - WorkStart.Hour) - (LunchEnd.Hour - LunchStart.Hour);
+
+        /// <summary>True если дата попадает в любой из периодов отпуска (по дням)</summary>
+        public bool IsOnVacation(DateTime dt)
+        {
+            var d = dt.Date;
+            foreach (var v in Vacations)
+                if (d >= v.Start.Date && d <= v.End.Date) return true;
+            return false;
+        }
 
         public bool CanHandle(string taskType) => taskType switch
         {

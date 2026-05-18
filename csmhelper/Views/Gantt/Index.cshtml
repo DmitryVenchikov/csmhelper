@@ -1,0 +1,1099 @@
+@{
+    ViewData["Title"] = "Диаграмма Ганта";
+}
+
+@section Styles {
+<style>
+/* ── Layout ── */
+.gantt-page { font-family: 'Segoe UI', sans-serif; }
+
+.gantt-header-bar {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: white; padding: 1.5rem 0; margin-bottom: 1.5rem;
+    border-radius: 0 0 20px 20px;
+}
+
+/* ── Sidebar panels ── */
+.side-panel { border: none; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+.side-panel .card-header { border-radius: 12px 12px 0 0 !important; font-weight: 600; }
+
+.member-badge {
+    display: inline-block; width: 12px; height: 12px;
+    border-radius: 50%; margin-right: 6px; flex-shrink: 0;
+}
+
+/* ── Gantt chart ── */
+#ganttWrapper {
+    overflow-x: auto; border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.08);
+    background: white;
+}
+
+#ganttChart {
+    min-width: 900px; position: relative;
+    user-select: none;
+}
+
+/* Header row */
+.g-header {
+    display: grid; background: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    font-size: .75rem; font-weight: 700;
+    text-transform: uppercase; color: #6c757d;
+    position: sticky; top: 0; z-index: 10;
+}
+
+.g-cell-label { padding: 8px 12px; border-right: 1px solid #dee2e6; white-space: nowrap; }
+.g-cell-timeline { display: flex; overflow: hidden; }
+
+.g-day-head {
+    text-align: center; padding: 4px 0; font-size: .65rem;
+    border-right: 1px solid #dee2e6; flex-shrink: 0;
+    background: #f8f9fa;
+}
+.g-day-head.weekend { background: #fff3cd; color: #856404; }
+.g-day-head.today-col { background: #cfe2ff; color: #0a58ca; }
+
+/* Rows */
+.g-row {
+    display: grid; border-bottom: 1px solid #f0f0f0;
+    min-height: 44px; align-items: center;
+    transition: background .15s;
+}
+.g-row:hover { background: #f8f9fa; }
+
+.g-label {
+    padding: 6px 12px; border-right: 1px solid #dee2e6;
+    display: flex; align-items: center; gap: 6px;
+    font-size: .85rem; font-weight: 500; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+}
+
+.g-timeline { position: relative; display: flex; height: 44px; }
+
+/* Day columns inside the timeline */
+.g-day-col {
+    flex-shrink: 0; border-right: 1px solid #f0f0f0;
+    height: 100%; position: relative;
+}
+.g-day-col.weekend { background: rgba(255,243,205,.35); }
+.g-day-col.today-col { background: rgba(207,226,255,.45); }
+
+/* Vacation overlays */
+.vacation-overlay {
+    position: absolute; top: 4px; bottom: 4px;
+    background: rgba(220, 53, 69, .22);
+    border: 1px solid rgba(220, 53, 69, .4);
+    border-radius: 3px; pointer-events: none; z-index: 3;
+}
+.vacation-label {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    left: 4px; font-size: .6rem; color: #842029;
+    white-space: nowrap; pointer-events: none; z-index: 4;
+    font-weight: 600;
+}
+
+/* Task bars */
+.g-task-bar {
+    position: absolute; top: 7px; bottom: 7px;
+    border-radius: 6px; cursor: pointer;
+    display: flex; align-items: center; padding: 0 8px;
+    font-size: .72rem; font-weight: 600; color: white;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    z-index: 5; transition: filter .15s, transform .1s;
+    box-shadow: 0 2px 6px rgba(0,0,0,.2);
+}
+.g-task-bar:hover { filter: brightness(1.1); transform: scaleY(1.05); }
+
+/* Progress stripe */
+.g-task-bar .progress-fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: rgba(255,255,255,.25); border-radius: 6px 0 0 6px;
+    pointer-events: none;
+}
+
+/* Milestone diamond */
+.g-milestone {
+    position: absolute; top: 50%; transform: translate(-50%, -50%) rotate(45deg);
+    width: 16px; height: 16px; z-index: 5; cursor: pointer;
+}
+
+/* Today line */
+#todayLine {
+    position: absolute; top: 0; bottom: 0; width: 2px;
+    background: #0d6efd; z-index: 8; pointer-events: none;
+}
+#todayLine::after {
+    content: 'Сегодня';
+    position: absolute; top: 2px; left: 4px;
+    font-size: .65rem; color: #0d6efd; white-space: nowrap; font-weight: 700;
+}
+
+/* ── Tooltip ── */
+#ganttTooltip {
+    position: fixed; background: rgba(0,0,0,.85); color: #fff;
+    padding: 8px 12px; border-radius: 8px; font-size: .78rem;
+    pointer-events: none; z-index: 9999; display: none;
+    max-width: 250px; line-height: 1.5;
+}
+
+/* ── Modals list items ── */
+.list-item-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px; border: 1px solid #dee2e6; border-radius: 6px;
+    margin-bottom: 6px; font-size: .85rem;
+}
+.list-item-row .item-info { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.list-item-row .item-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+/* ── Legend ── */
+.legend-box { display: inline-block; width: 16px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+.vacation-legend { background: rgba(220,53,69,.3); border: 1px solid rgba(220,53,69,.5); }
+.weekend-legend { background: rgba(255,243,205,.7); border: 1px solid #ffc107; }
+.today-legend { background: rgba(13,110,253,.25); border: 1px solid #0d6efd; }
+
+/* ── Range input ── */
+.range-row { display: flex; align-items: center; gap: 10px; }
+.range-row input[type=range] { flex: 1; }
+.range-val { min-width: 36px; text-align: center; font-weight: 600; color: #0d6efd; }
+</style>
+}
+
+<div class="gantt-page">
+    <div class="gantt-header-bar text-center">
+        <h1 class="h3 mb-1">📅 Диаграмма Ганта команды</h1>
+        <p class="mb-0 text-white-50">Планирование с учётом графика отпусков</p>
+    </div>
+
+    <div class="container-fluid px-3">
+        <div class="row g-3">
+
+            <!-- ══ LEFT SIDEBAR ══ -->
+            <div class="col-lg-3">
+
+                <!-- Team members -->
+                <div class="card side-panel mb-3">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <span>👥 Команда</span>
+                        <button class="btn btn-sm btn-light" data-bs-toggle="modal" data-bs-target="#memberModal">
+                            <i>＋</i> Добавить
+                        </button>
+                    </div>
+                    <div class="card-body p-2" id="memberList">
+                        <div class="text-muted text-center small py-2">Загрузка…</div>
+                    </div>
+                </div>
+
+                <!-- Vacations -->
+                <div class="card side-panel mb-3">
+                    <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+                        <span>🏖️ Отпуска</span>
+                        <button class="btn btn-sm btn-light" data-bs-toggle="modal" data-bs-target="#vacationModal">
+                            <i>＋</i> Добавить
+                        </button>
+                    </div>
+                    <div class="card-body p-2" id="vacationList">
+                        <div class="text-muted text-center small py-2">Загрузка…</div>
+                    </div>
+                </div>
+
+                <!-- Tasks -->
+                <div class="card side-panel">
+                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                        <span>📌 Задачи</span>
+                        <button class="btn btn-sm btn-light" data-bs-toggle="modal" data-bs-target="#taskModal">
+                            <i>＋</i> Добавить
+                        </button>
+                    </div>
+                    <div class="card-body p-2" id="taskList">
+                        <div class="text-muted text-center small py-2">Загрузка…</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══ GANTT AREA ══ -->
+            <div class="col-lg-9">
+
+                <!-- Controls -->
+                <div class="card side-panel mb-3">
+                    <div class="card-body py-2">
+                        <div class="row align-items-center g-2">
+                            <div class="col-md-4">
+                                <label class="form-label mb-0 small fw-semibold">Диапазон дат:</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="date" id="rangeStart" class="form-control">
+                                    <span class="input-group-text">—</span>
+                                    <input type="date" id="rangeEnd" class="form-control">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label mb-0 small fw-semibold">Масштаб (px/день):</label>
+                                <div class="range-row">
+                                    <input type="range" id="dayWidthSlider" min="16" max="60" value="28">
+                                    <span class="range-val" id="dayWidthVal">28</span>
+                                </div>
+                            </div>
+                            <div class="col-md-5 text-end">
+                                <!-- Legend -->
+                                <span class="me-3 small"><span class="legend-box vacation-legend"></span>Отпуск</span>
+                                <span class="me-3 small"><span class="legend-box weekend-legend"></span>Выходные</span>
+                                <span class="me-3 small"><span class="legend-box today-legend"></span>Сегодня</span>
+                                <button class="btn btn-sm btn-outline-secondary" id="scrollToToday">Сегодня ▶</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Smart scheduling panel -->
+                <div class="card side-panel mb-3 border-warning">
+                    <div class="card-header bg-warning">
+                        <span class="fw-semibold">⚡ Умное планирование — расчёт даты с учётом отпуска</span>
+                    </div>
+                    <div class="card-body py-2">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label mb-1 small">Участник</label>
+                                <select id="schedMember" class="form-select form-select-sm"></select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label mb-1 small">Дата начала</label>
+                                <input type="date" id="schedStart" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label mb-1 small">Рабочих дней</label>
+                                <input type="number" id="schedDays" class="form-control form-control-sm" value="5" min="1">
+                            </div>
+                            <div class="col-md-2">
+                                <button class="btn btn-warning btn-sm w-100" id="schedCalc">Рассчитать</button>
+                            </div>
+                            <div class="col-md-3">
+                                <div id="schedResult" class="small"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chart -->
+                <div id="ganttWrapper">
+                    <div id="ganttChart">
+                        <div class="text-center py-5 text-muted">Загрузка диаграммы…</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Tooltip ── -->
+<div id="ganttTooltip"></div>
+
+<!-- ══════════════════════════ MODALS ══════════════════════════ -->
+
+<!-- Member modal -->
+<div class="modal fade" id="memberModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="memberModalTitle">Добавить участника</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="memberId">
+                <div class="mb-3">
+                    <label class="form-label">Имя <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="memberName" placeholder="Иван Иванов">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Роль</label>
+                    <input type="text" class="form-control" id="memberRole" placeholder="Разработчик, Аналитик…">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Цвет</label>
+                    <input type="color" class="form-control form-control-color" id="memberColor" value="#4facfe">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveMemberBtn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Vacation modal -->
+<div class="modal fade" id="vacationModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="vacationModalTitle">Добавить отпуск</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="vacationId">
+                <div class="mb-3">
+                    <label class="form-label">Участник <span class="text-danger">*</span></label>
+                    <select class="form-select" id="vacationMember"></select>
+                </div>
+                <div class="row mb-3">
+                    <div class="col">
+                        <label class="form-label">Дата начала <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="vacationStart">
+                    </div>
+                    <div class="col">
+                        <label class="form-label">Дата окончания <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="vacationEnd">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Примечание</label>
+                    <input type="text" class="form-control" id="vacationNote" placeholder="Ежегодный, больничный…">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" id="saveVacationBtn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Task modal -->
+<div class="modal fade" id="taskModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="taskModalTitle">Добавить задачу</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="taskId">
+                <div class="mb-3">
+                    <label class="form-label">Название <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="taskTitle" placeholder="Разработка модуля авторизации">
+                </div>
+                <div class="row mb-3">
+                    <div class="col">
+                        <label class="form-label">Участник</label>
+                        <select class="form-select" id="taskMember">
+                            <option value="">— Вся команда —</option>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <label class="form-label">Тип</label>
+                        <select class="form-select" id="taskType">
+                            <option value="task">Задача</option>
+                            <option value="sprint">Спринт</option>
+                            <option value="milestone">Веха</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col">
+                        <label class="form-label">Дата начала <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="taskStart">
+                    </div>
+                    <div class="col">
+                        <label class="form-label">Дата окончания <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="taskEnd">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Прогресс: <span id="progressLabel">0</span>%</label>
+                    <input type="range" class="form-range" id="taskProgress" min="0" max="100" value="0"
+                           oninput="document.getElementById('progressLabel').textContent=this.value">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Цвет</label>
+                    <input type="color" class="form-control form-control-color" id="taskColor" value="#28a745">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Описание</label>
+                    <textarea class="form-control" id="taskDesc" rows="2"></textarea>
+                </div>
+
+                <!-- Vacation warning block -->
+                <div id="taskVacationWarning" class="alert alert-warning d-none">
+                    <strong>⚠️ Пересечение с отпуском!</strong>
+                    <div id="taskVacationWarnText"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-success" id="saveTaskBtn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+// ══════════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════════
+let ganttData = { members: [], vacations: [], tasks: [] };
+let DAY_W = 28;   // px per day
+let rangeStart, rangeEnd; // Date objects
+
+// ══════════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', async () => {
+    // Default range: current month ± 1 month
+    const today = new Date();
+    const s = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const e = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+    document.getElementById('rangeStart').value = fmt(s);
+    document.getElementById('rangeEnd').value = fmt(e);
+    document.getElementById('schedStart').value = fmt(today);
+
+    dayWidthSlider.addEventListener('input', () => {
+        DAY_W = +dayWidthSlider.value;
+        document.getElementById('dayWidthVal').textContent = DAY_W;
+        renderChart();
+    });
+
+    document.getElementById('rangeStart').addEventListener('change', renderChart);
+    document.getElementById('rangeEnd').addEventListener('change', renderChart);
+
+    document.getElementById('scrollToToday').addEventListener('click', scrollToToday);
+
+    await loadData();
+
+    // Watch task dates for vacation overlap
+    ['taskStart','taskEnd','taskMember'].forEach(id =>
+        document.getElementById(id).addEventListener('change', checkTaskVacationOverlap));
+});
+
+// ══════════════════════════════════════════════════════════════
+//  DATA LOADING
+// ══════════════════════════════════════════════════════════════
+async function loadData() {
+    const res = await fetch('/Gantt/Data');
+    const json = await res.json();
+    if (json.success) {
+        ganttData = json.data;
+        renderAll();
+    }
+}
+
+function renderAll() {
+    renderMemberList();
+    renderVacationList();
+    renderTaskList();
+    populateMemberSelects();
+    renderChart();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MEMBER LIST
+// ══════════════════════════════════════════════════════════════
+function renderMemberList() {
+    const el = document.getElementById('memberList');
+    if (!ganttData.members.length) {
+        el.innerHTML = '<div class="text-muted text-center small py-2">Нет участников</div>';
+        return;
+    }
+    el.innerHTML = ganttData.members.map(m => `
+        <div class="list-item-row">
+            <div class="item-info">
+                <span class="member-badge" style="background:${m.color}"></span>
+                <div>
+                    <div class="fw-semibold">${esc(m.name)}</div>
+                    ${m.role ? `<div class="text-muted" style="font-size:.75rem">${esc(m.role)}</div>` : ''}
+                </div>
+            </div>
+            <div class="item-actions">
+                <button class="btn btn-xs btn-outline-primary" style="padding:2px 7px;font-size:.72rem" onclick="editMember('${m.id}')">✎</button>
+                <button class="btn btn-xs btn-outline-danger"  style="padding:2px 7px;font-size:.72rem" onclick="deleteMember('${m.id}')">✕</button>
+            </div>
+        </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  VACATION LIST
+// ══════════════════════════════════════════════════════════════
+function renderVacationList() {
+    const el = document.getElementById('vacationList');
+    if (!ganttData.vacations.length) {
+        el.innerHTML = '<div class="text-muted text-center small py-2">Нет отпусков</div>';
+        return;
+    }
+    // Sort by start date
+    const sorted = [...ganttData.vacations].sort((a,b) => new Date(a.startDate) - new Date(b.startDate));
+    el.innerHTML = sorted.map(v => {
+        const m = ganttData.members.find(x => x.id === v.memberId);
+        const name = m ? m.name : '—';
+        const color = m ? m.color : '#ccc';
+        return `
+        <div class="list-item-row">
+            <div class="item-info" style="flex-direction:column;align-items:flex-start">
+                <div style="display:flex;align-items:center;gap:5px">
+                    <span class="member-badge" style="background:${color}"></span>
+                    <strong>${esc(name)}</strong>
+                </div>
+                <div class="text-danger" style="font-size:.75rem">
+                    🏖️ ${shortDate(v.startDate)} — ${shortDate(v.endDate)}
+                    ${v.note ? `<span class="text-muted">(${esc(v.note)})</span>` : ''}
+                </div>
+            </div>
+            <div class="item-actions">
+                <button class="btn btn-xs btn-outline-primary" style="padding:2px 7px;font-size:.72rem" onclick="editVacation('${v.id}')">✎</button>
+                <button class="btn btn-xs btn-outline-danger"  style="padding:2px 7px;font-size:.72rem" onclick="deleteVacation('${v.id}')">✕</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TASK LIST (sidebar)
+// ══════════════════════════════════════════════════════════════
+function renderTaskList() {
+    const el = document.getElementById('taskList');
+    if (!ganttData.tasks.length) {
+        el.innerHTML = '<div class="text-muted text-center small py-2">Нет задач</div>';
+        return;
+    }
+    const sorted = [...ganttData.tasks].sort((a,b) => new Date(a.startDate) - new Date(b.startDate));
+    el.innerHTML = sorted.map(t => {
+        const m = ganttData.members.find(x => x.id === t.memberId);
+        return `
+        <div class="list-item-row">
+            <div class="item-info">
+                <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${t.color};margin-right:5px;flex-shrink:0"></span>
+                <div style="min-width:0">
+                    <div class="fw-semibold text-truncate" style="max-width:140px" title="${esc(t.title)}">${esc(t.title)}</div>
+                    <div class="text-muted" style="font-size:.72rem">
+                        ${m ? esc(m.name) : 'Команда'} · ${shortDate(t.startDate)}
+                    </div>
+                </div>
+            </div>
+            <div class="item-actions">
+                <button class="btn btn-xs btn-outline-primary" style="padding:2px 7px;font-size:.72rem" onclick="editTask('${t.id}')">✎</button>
+                <button class="btn btn-xs btn-outline-danger"  style="padding:2px 7px;font-size:.72rem" onclick="deleteTask('${t.id}')">✕</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  POPULATE SELECTS
+// ══════════════════════════════════════════════════════════════
+function populateMemberSelects() {
+    const opts = ganttData.members.map(m =>
+        `<option value="${m.id}">${esc(m.name)}</option>`).join('');
+    const optsWithBlank = `<option value="">— Вся команда —</option>` + opts;
+    document.getElementById('vacationMember').innerHTML = opts;
+    document.getElementById('taskMember').innerHTML = optsWithBlank;
+    document.getElementById('schedMember').innerHTML = opts;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  GANTT CHART RENDERING
+// ══════════════════════════════════════════════════════════════
+function renderChart() {
+    rangeStart = parseDate(document.getElementById('rangeStart').value);
+    rangeEnd   = parseDate(document.getElementById('rangeEnd').value);
+    if (!rangeStart || !rangeEnd || rangeStart >= rangeEnd) return;
+
+    const days = daysBetween(rangeStart, rangeEnd) + 1;
+    const labelW = 160; // px
+    const totalW = labelW + days * DAY_W;
+
+    const chart = document.getElementById('ganttChart');
+    chart.innerHTML = '';
+    chart.style.width = totalW + 'px';
+
+    // ── Header ──
+    const headerRow = document.createElement('div');
+    headerRow.className = 'g-header';
+    headerRow.style.gridTemplateColumns = `${labelW}px 1fr`;
+
+    const labelHead = document.createElement('div');
+    labelHead.className = 'g-cell-label';
+    labelHead.textContent = 'Участник / Задача';
+    headerRow.appendChild(labelHead);
+
+    const timelineHead = document.createElement('div');
+    timelineHead.className = 'g-cell-timeline';
+    timelineHead.style.width = (days * DAY_W) + 'px';
+
+    const today = new Date(); today.setHours(0,0,0,0);
+    for (let i = 0; i < days; i++) {
+        const d = addDays(rangeStart, i);
+        const isWE = d.getDay() === 0 || d.getDay() === 6;
+        const isToday = d.getTime() === today.getTime();
+        const cell = document.createElement('div');
+        cell.className = 'g-day-head' + (isWE ? ' weekend' : '') + (isToday ? ' today-col' : '');
+        cell.style.width = DAY_W + 'px';
+        // Show day number; on 1st of month also show month
+        const label = d.getDate() === 1
+            ? d.toLocaleDateString('ru-RU', {month:'short', day:'numeric'})
+            : d.getDate();
+        cell.textContent = label;
+        timelineHead.appendChild(cell);
+    }
+    headerRow.appendChild(timelineHead);
+    chart.appendChild(headerRow);
+
+    // ── Today line container (positioned on top of rows) ──
+    const todayWrapper = document.createElement('div');
+    todayWrapper.style.cssText = 'position:relative;';
+
+    // ── Rows: one per member + their tasks ──
+    // Group tasks by member; also tasks with no member go to a "team" group
+    const membersToShow = [...ganttData.members];
+    if (ganttData.tasks.some(t => !t.memberId)) {
+        membersToShow.push({ id: '', name: '— Вся команда —', color: '#6c757d', role: '' });
+    }
+
+    membersToShow.forEach(member => {
+        const memberTasks = ganttData.tasks.filter(t => t.memberId === member.id);
+        const memberVacations = ganttData.vacations.filter(v => v.memberId === member.id);
+
+        if (memberTasks.length === 0 && memberVacations.length === 0 && member.id === '') return;
+
+        // ── Member label row ──
+        const memberRow = document.createElement('div');
+        memberRow.className = 'g-row';
+        memberRow.style.gridTemplateColumns = `${labelW}px 1fr`;
+        memberRow.style.background = '#f0f4ff';
+
+        const mLabel = document.createElement('div');
+        mLabel.className = 'g-label';
+        mLabel.innerHTML = `<span class="member-badge" style="background:${member.color}"></span><span>${esc(member.name)}</span>`;
+        if (member.role) mLabel.title = member.role;
+        memberRow.appendChild(mLabel);
+
+        // Vacation timeline for member row
+        const mTimeline = buildTimelineCells(days, today, memberVacations, member.color, labelW);
+        memberRow.appendChild(mTimeline);
+        chart.appendChild(memberRow);
+
+        // ── Task rows ──
+        memberTasks.forEach(task => {
+            const taskRow = document.createElement('div');
+            taskRow.className = 'g-row';
+            taskRow.style.gridTemplateColumns = `${labelW}px 1fr`;
+
+            const tLabel = document.createElement('div');
+            tLabel.className = 'g-label';
+            tLabel.style.paddingLeft = '24px';
+            const typeIcon = task.type === 'sprint' ? '⚡' : task.type === 'milestone' ? '🔷' : '▪';
+            tLabel.innerHTML = `<span style="color:${task.color}">${typeIcon}</span><span style="font-size:.8rem">${esc(task.title)}</span>`;
+            taskRow.appendChild(tLabel);
+
+            const tTimeline = buildTimelineCells(days, today, memberVacations, member.color, labelW);
+
+            // Draw task bar
+            const taskStart = parseDate(task.startDate);
+            const taskEnd   = parseDate(task.endDate);
+            if (taskStart && taskEnd) {
+                const startOffset = daysBetween(rangeStart, taskStart);
+                const endOffset   = daysBetween(rangeStart, taskEnd);
+                if (endOffset >= 0 && startOffset <= days) {
+                    const left = Math.max(0, startOffset) * DAY_W;
+                    const right = Math.min(days, endOffset + 1) * DAY_W;
+                    const width = right - left;
+
+                    if (task.type === 'milestone') {
+                        const diamond = document.createElement('div');
+                        diamond.className = 'g-milestone';
+                        diamond.style.cssText = `left:${left + DAY_W/2}px;background:${task.color};`;
+                        addTaskTooltip(diamond, task, member, memberVacations);
+                        tTimeline.appendChild(diamond);
+                    } else {
+                        const bar = document.createElement('div');
+                        bar.className = 'g-task-bar';
+                        bar.style.cssText = `left:${left}px;width:${width}px;background:${task.color};`;
+                        bar.innerHTML = `
+                            <div class="progress-fill" style="width:${task.progress}%"></div>
+                            <span style="position:relative;z-index:1">${esc(task.title)}</span>
+                        `;
+                        addTaskTooltip(bar, task, member, memberVacations);
+                        bar.addEventListener('click', () => editTask(task.id));
+                        tTimeline.appendChild(bar);
+                    }
+                }
+            }
+            taskRow.appendChild(tTimeline);
+            chart.appendChild(taskRow);
+        });
+    });
+
+    // ── Today vertical line ──
+    const todayOffset = daysBetween(rangeStart, today);
+    if (todayOffset >= 0 && todayOffset <= days) {
+        const tl = document.createElement('div');
+        tl.id = 'todayLine';
+        tl.style.left = (labelW + todayOffset * DAY_W + DAY_W/2) + 'px';
+        tl.style.top = '0';
+        tl.style.height = chart.scrollHeight + 'px';
+        // We'll add it after chart is built
+        chart.style.position = 'relative';
+        chart.appendChild(tl);
+    }
+}
+
+function buildTimelineCells(days, today, vacations, memberColor, labelW) {
+    const timeline = document.createElement('div');
+    timeline.className = 'g-timeline';
+    timeline.style.width = (days * DAY_W) + 'px';
+    timeline.style.position = 'relative';
+
+    for (let i = 0; i < days; i++) {
+        const d = addDays(rangeStart, i);
+        const isWE = d.getDay() === 0 || d.getDay() === 6;
+        const isToday = d.getTime() === today.getTime();
+        const cell = document.createElement('div');
+        cell.className = 'g-day-col' + (isWE ? ' weekend' : '') + (isToday ? ' today-col' : '');
+        cell.style.width = DAY_W + 'px';
+        timeline.appendChild(cell);
+    }
+
+    // Draw vacation overlays
+    vacations.forEach(v => {
+        const vStart = parseDate(v.startDate);
+        const vEnd   = parseDate(v.endDate);
+        if (!vStart || !vEnd) return;
+        const startOff = daysBetween(rangeStart, vStart);
+        const endOff   = daysBetween(rangeStart, vEnd);
+        if (endOff < 0 || startOff > days) return;
+
+        const left  = Math.max(0, startOff) * DAY_W;
+        const right = Math.min(days, endOff + 1) * DAY_W;
+        const width = right - left;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'vacation-overlay';
+        overlay.style.left  = left + 'px';
+        overlay.style.width = width + 'px';
+        overlay.title = `🏖️ Отпуск: ${shortDate(v.startDate)} — ${shortDate(v.endDate)}${v.note ? '\n' + v.note : ''}`;
+
+        // Label if enough space
+        if (width > 30) {
+            const lbl = document.createElement('div');
+            lbl.className = 'vacation-label';
+            lbl.textContent = '🏖️';
+            overlay.appendChild(lbl);
+        }
+        timeline.appendChild(overlay);
+    });
+
+    return timeline;
+}
+
+function addTaskTooltip(el, task, member, memberVacations) {
+    const tooltip = document.getElementById('ganttTooltip');
+    el.addEventListener('mouseenter', e => {
+        const vOverlaps = memberVacations.filter(v => {
+            const vs = parseDate(v.startDate), ve = parseDate(v.endDate);
+            const ts = parseDate(task.startDate), te = parseDate(task.endDate);
+            return vs && ve && ts && te && vs <= te && ve >= ts;
+        });
+        let html = `<strong>${esc(task.title)}</strong><br>`;
+        html += `👤 ${esc(member.name)}<br>`;
+        html += `📅 ${shortDate(task.startDate)} — ${shortDate(task.endDate)}<br>`;
+        html += `📊 Прогресс: ${task.progress}%`;
+        if (task.description) html += `<br><em>${esc(task.description)}</em>`;
+        if (vOverlaps.length) {
+            html += `<br><span style="color:#ff6b6b">⚠️ Пересекается с отпуском!</span>`;
+        }
+        tooltip.innerHTML = html;
+        tooltip.style.display = 'block';
+        moveTooltip(e);
+    });
+    el.addEventListener('mousemove', moveTooltip);
+    el.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+}
+
+function moveTooltip(e) {
+    const t = document.getElementById('ganttTooltip');
+    t.style.left = (e.clientX + 14) + 'px';
+    t.style.top  = (e.clientY + 14) + 'px';
+}
+
+function scrollToToday() {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const off = daysBetween(rangeStart, today);
+    const wrapper = document.getElementById('ganttWrapper');
+    const labelW = 160;
+    wrapper.scrollLeft = labelW + off * DAY_W - wrapper.clientWidth / 2;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MEMBER CRUD
+// ══════════════════════════════════════════════════════════════
+document.getElementById('saveMemberBtn').addEventListener('click', async () => {
+    const id    = document.getElementById('memberId').value;
+    const name  = document.getElementById('memberName').value.trim();
+    const role  = document.getElementById('memberRole').value.trim();
+    const color = document.getElementById('memberColor').value;
+
+    if (!name) { alert('Введите имя участника'); return; }
+
+    const payload = { name, role, color };
+    let res;
+    if (id) {
+        res = await fetch(`/Gantt/Members/${id}`, { method:'PUT', headers:jsonH(), body: JSON.stringify({id,...payload}) });
+    } else {
+        res = await fetch('/Gantt/Members', { method:'POST', headers:jsonH(), body: JSON.stringify(payload) });
+    }
+    const json = await res.json();
+    if (json.success) {
+        bootstrap.Modal.getInstance(document.getElementById('memberModal')).hide();
+        await loadData();
+    } else {
+        alert(json.error || 'Ошибка сохранения');
+    }
+});
+
+function editMember(id) {
+    const m = ganttData.members.find(x => x.id === id);
+    if (!m) return;
+    document.getElementById('memberId').value    = m.id;
+    document.getElementById('memberName').value  = m.name;
+    document.getElementById('memberRole').value  = m.role || '';
+    document.getElementById('memberColor').value = m.color;
+    document.getElementById('memberModalTitle').textContent = 'Редактировать участника';
+    new bootstrap.Modal(document.getElementById('memberModal')).show();
+}
+
+async function deleteMember(id) {
+    const m = ganttData.members.find(x => x.id === id);
+    if (!confirm(`Удалить участника "${m?.name}"? Все его задачи и отпуска тоже будут удалены.`)) return;
+    const res = await fetch(`/Gantt/Members/${id}`, { method:'DELETE' });
+    const json = await res.json();
+    if (json.success) await loadData();
+}
+
+document.getElementById('memberModal').addEventListener('hidden.bs.modal', () => {
+    document.getElementById('memberId').value = '';
+    document.getElementById('memberName').value = '';
+    document.getElementById('memberRole').value = '';
+    document.getElementById('memberColor').value = '#4facfe';
+    document.getElementById('memberModalTitle').textContent = 'Добавить участника';
+});
+
+// ══════════════════════════════════════════════════════════════
+//  VACATION CRUD
+// ══════════════════════════════════════════════════════════════
+document.getElementById('saveVacationBtn').addEventListener('click', async () => {
+    const id       = document.getElementById('vacationId').value;
+    const memberId = document.getElementById('vacationMember').value;
+    const start    = document.getElementById('vacationStart').value;
+    const end      = document.getElementById('vacationEnd').value;
+    const note     = document.getElementById('vacationNote').value.trim();
+
+    if (!memberId || !start || !end) { alert('Заполните обязательные поля'); return; }
+
+    const payload = { memberId, startDate: start, endDate: end, note };
+    let res;
+    if (id) {
+        res = await fetch(`/Gantt/Vacations/${id}`, { method:'PUT', headers:jsonH(), body: JSON.stringify({id,...payload}) });
+    } else {
+        res = await fetch('/Gantt/Vacations', { method:'POST', headers:jsonH(), body: JSON.stringify(payload) });
+    }
+    const json = await res.json();
+    if (json.success) {
+        bootstrap.Modal.getInstance(document.getElementById('vacationModal')).hide();
+        await loadData();
+    } else {
+        alert(json.error || 'Ошибка сохранения');
+    }
+});
+
+function editVacation(id) {
+    const v = ganttData.vacations.find(x => x.id === id);
+    if (!v) return;
+    document.getElementById('vacationId').value      = v.id;
+    document.getElementById('vacationMember').value  = v.memberId;
+    document.getElementById('vacationStart').value   = v.startDate.substring(0,10);
+    document.getElementById('vacationEnd').value     = v.endDate.substring(0,10);
+    document.getElementById('vacationNote').value    = v.note || '';
+    document.getElementById('vacationModalTitle').textContent = 'Редактировать отпуск';
+    new bootstrap.Modal(document.getElementById('vacationModal')).show();
+}
+
+async function deleteVacation(id) {
+    if (!confirm('Удалить запись об отпуске?')) return;
+    const res = await fetch(`/Gantt/Vacations/${id}`, { method:'DELETE' });
+    const json = await res.json();
+    if (json.success) await loadData();
+}
+
+document.getElementById('vacationModal').addEventListener('hidden.bs.modal', () => {
+    document.getElementById('vacationId').value = '';
+    document.getElementById('vacationNote').value = '';
+    document.getElementById('vacationModalTitle').textContent = 'Добавить отпуск';
+});
+
+// ══════════════════════════════════════════════════════════════
+//  TASK CRUD
+// ══════════════════════════════════════════════════════════════
+document.getElementById('saveTaskBtn').addEventListener('click', async () => {
+    const id       = document.getElementById('taskId').value;
+    const title    = document.getElementById('taskTitle').value.trim();
+    const memberId = document.getElementById('taskMember').value;
+    const type     = document.getElementById('taskType').value;
+    const start    = document.getElementById('taskStart').value;
+    const end      = document.getElementById('taskEnd').value;
+    const progress = +document.getElementById('taskProgress').value;
+    const color    = document.getElementById('taskColor').value;
+    const desc     = document.getElementById('taskDesc').value.trim();
+
+    if (!title || !start || !end) { alert('Заполните обязательные поля'); return; }
+
+    const payload = { title, memberId, type, startDate: start, endDate: end, progress, color, description: desc };
+    let res;
+    if (id) {
+        res = await fetch(`/Gantt/Tasks/${id}`, { method:'PUT', headers:jsonH(), body: JSON.stringify({id,...payload}) });
+    } else {
+        res = await fetch('/Gantt/Tasks', { method:'POST', headers:jsonH(), body: JSON.stringify(payload) });
+    }
+    const json = await res.json();
+    if (json.success) {
+        bootstrap.Modal.getInstance(document.getElementById('taskModal')).hide();
+        await loadData();
+    } else {
+        alert(json.error || 'Ошибка сохранения');
+    }
+});
+
+function editTask(id) {
+    const t = ganttData.tasks.find(x => x.id === id);
+    if (!t) return;
+    document.getElementById('taskId').value       = t.id;
+    document.getElementById('taskTitle').value    = t.title;
+    document.getElementById('taskMember').value   = t.memberId || '';
+    document.getElementById('taskType').value     = t.type;
+    document.getElementById('taskStart').value    = t.startDate.substring(0,10);
+    document.getElementById('taskEnd').value      = t.endDate.substring(0,10);
+    document.getElementById('taskProgress').value = t.progress;
+    document.getElementById('progressLabel').textContent = t.progress;
+    document.getElementById('taskColor').value    = t.color;
+    document.getElementById('taskDesc').value     = t.description || '';
+    document.getElementById('taskModalTitle').textContent = 'Редактировать задачу';
+    checkTaskVacationOverlap();
+    new bootstrap.Modal(document.getElementById('taskModal')).show();
+}
+
+async function deleteTask(id) {
+    if (!confirm('Удалить задачу?')) return;
+    const res = await fetch(`/Gantt/Tasks/${id}`, { method:'DELETE' });
+    const json = await res.json();
+    if (json.success) await loadData();
+}
+
+document.getElementById('taskModal').addEventListener('hidden.bs.modal', () => {
+    document.getElementById('taskId').value = '';
+    document.getElementById('taskTitle').value = '';
+    document.getElementById('taskMember').value = '';
+    document.getElementById('taskType').value = 'task';
+    document.getElementById('taskStart').value = '';
+    document.getElementById('taskEnd').value = '';
+    document.getElementById('taskProgress').value = 0;
+    document.getElementById('progressLabel').textContent = '0';
+    document.getElementById('taskColor').value = '#28a745';
+    document.getElementById('taskDesc').value = '';
+    document.getElementById('taskVacationWarning').classList.add('d-none');
+    document.getElementById('taskModalTitle').textContent = 'Добавить задачу';
+});
+
+function checkTaskVacationOverlap() {
+    const memberId = document.getElementById('taskMember').value;
+    const start    = document.getElementById('taskStart').value;
+    const end      = document.getElementById('taskEnd').value;
+    const warn     = document.getElementById('taskVacationWarning');
+    const warnText = document.getElementById('taskVacationWarnText');
+
+    if (!memberId || !start || !end) { warn.classList.add('d-none'); return; }
+
+    const ts = parseDate(start), te = parseDate(end);
+    const overlapping = ganttData.vacations.filter(v => {
+        if (v.memberId !== memberId) return false;
+        const vs = parseDate(v.startDate), ve = parseDate(v.endDate);
+        return vs && ve && vs <= te && ve >= ts;
+    });
+
+    if (overlapping.length) {
+        const member = ganttData.members.find(m => m.id === memberId);
+        warnText.innerHTML = overlapping.map(v =>
+            `Участник <strong>${esc(member?.name || '')}</strong> в отпуске с <strong>${shortDate(v.startDate)}</strong> по <strong>${shortDate(v.endDate)}</strong>${v.note ? ' (' + esc(v.note) + ')' : ''}.`
+        ).join('<br>');
+        warn.classList.remove('d-none');
+    } else {
+        warn.classList.add('d-none');
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SMART SCHEDULING
+// ══════════════════════════════════════════════════════════════
+document.getElementById('schedCalc').addEventListener('click', async () => {
+    const memberId = document.getElementById('schedMember').value;
+    const start    = document.getElementById('schedStart').value;
+    const days     = document.getElementById('schedDays').value;
+    const result   = document.getElementById('schedResult');
+
+    if (!memberId || !start || !days) { result.innerHTML = '<span class="text-danger">Заполните все поля</span>'; return; }
+
+    result.innerHTML = '<span class="text-muted">Вычисляю…</span>';
+    const res = await fetch(`/Gantt/ComputeEnd?memberId=${memberId}&start=${start}&workDays=${days}`);
+    const json = await res.json();
+    if (!json.success) { result.innerHTML = `<span class="text-danger">${esc(json.error)}</span>`; return; }
+
+    const member = ganttData.members.find(m => m.id === memberId);
+    let html = `<strong>Дата окончания:</strong> ${json.effectiveEnd}<br>`;
+    if (json.vacationDaysOverlap > 0) {
+        html += `<span class="text-danger">⚠️ Пропущено отпускных дней: <strong>${json.vacationDaysOverlap}</strong></span><br>`;
+        html += `<span class="text-muted">(без учёта: ${json.originalEnd})</span>`;
+    } else {
+        html += `<span class="text-success">✓ Отпуска не пересекаются</span>`;
+    }
+    result.innerHTML = html;
+});
+
+// ══════════════════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════════════════
+function parseDate(str) {
+    if (!str) return null;
+    const d = new Date(str);
+    d.setHours(0,0,0,0);
+    return isNaN(d) ? null : d;
+}
+
+function fmt(d) {
+    return d.toISOString().substring(0,10);
+}
+
+function addDays(d, n) {
+    const r = new Date(d);
+    r.setDate(r.getDate() + n);
+    return r;
+}
+
+function daysBetween(a, b) {
+    return Math.round((b - a) / 86400000);
+}
+
+function shortDate(str) {
+    if (!str) return '—';
+    const d = new Date(str);
+    return d.toLocaleDateString('ru-RU', {day:'numeric', month:'short'});
+}
+
+function esc(s) {
+    if (!s) return '';
+    return String(s)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;');
+}
+
+function jsonH() {
+    return { 'Content-Type': 'application/json' };
+}
+</script>
+}

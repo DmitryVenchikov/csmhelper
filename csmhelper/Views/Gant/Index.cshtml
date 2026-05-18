@@ -89,6 +89,19 @@
 
     /* SP hint */
     .sp-hint { background: #f0f6ff; border-radius: 4px; font-size: .77rem; color: #374151; padding: .4rem .6rem; }
+
+    /* Vacation rows */
+    .vac-row {
+        display: flex; gap: .35rem; align-items: center;
+        background: #fff5f5; border: 1px solid #f5c2c7;
+        border-radius: 4px; padding: .25rem .4rem; margin-top: .35rem;
+        font-size: .78rem;
+    }
+    .vac-row input[type=date] { font-size: .77rem; padding: .1rem .3rem; height: auto; }
+    .vac-row .vac-rm { background:none;border:none;color:#aaa;cursor:pointer;font-size:.9rem;padding:0 .2rem; }
+    .vac-row .vac-rm:hover { color:#dc3545; }
+    .vac-add { font-size: .78rem; color: #b91c1c; cursor: pointer; display: inline-block; margin-top: .25rem; }
+    .vac-add:hover { text-decoration: underline; }
 </style>
 }
 
@@ -301,8 +314,11 @@ function addEmp(name = '', role = 'backend_dev') {
         </div>
       </div>
       <div class="mt-1">
-        <a class="small text-primary" style="cursor:pointer" onclick="toggleSched(${id})">
+        <a class="small text-primary me-3" style="cursor:pointer" onclick="toggleSched(${id})">
           🕐 Рабочее время
+        </a>
+        <a class="small" style="cursor:pointer;color:#b91c1c" onclick="toggleVac(${id})">
+          🏖️ Отпуска <span id="vac-count-${id}" class="text-muted">(0)</span>
         </a>
         <div id="sched-${id}" style="display:none" class="row g-2 mt-1">
           <div class="col-6 col-sm-3"><label class="form-label small mb-1">Начало</label>
@@ -314,8 +330,49 @@ function addEmp(name = '', role = 'backend_dev') {
           <div class="col-6 col-sm-3"><label class="form-label small mb-1">Обед до</label>
             <input type="time" class="form-control form-control-sm ele" value="14:00" /></div>
         </div>
+        <div id="vac-${id}" style="display:none" class="mt-1">
+          <div class="vac-list" data-emp="${id}"></div>
+          <span class="vac-add" onclick="addVac(${id})">+ Добавить отпуск</span>
+        </div>
       </div>
     </div>`);
+}
+
+// ─── Vacations per employee ──────────────────────────────────────
+function toggleVac(id) {
+    const el = document.getElementById(`vac-${id}`);
+    el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+function addVac(id, start = '', end = '') {
+    const list = document.querySelector(`#vac-${id} .vac-list`);
+    if (!list) return;
+    const row = document.createElement('div');
+    row.className = 'vac-row';
+    row.innerHTML = `
+        <span>с</span>
+        <input type="date" class="form-control form-control-sm vac-start" value="${start}">
+        <span>по</span>
+        <input type="date" class="form-control form-control-sm vac-end" value="${end}">
+        <input type="text" class="form-control form-control-sm vac-note flex-grow-1" placeholder="примечание" style="font-size:.77rem">
+        <button class="vac-rm" type="button" title="Удалить" onclick="this.parentElement.remove();updateVacCount(${id})">✕</button>
+    `;
+    list.appendChild(row);
+    updateVacCount(id);
+}
+
+function updateVacCount(id) {
+    const cnt = document.querySelectorAll(`#vac-${id} .vac-row`).length;
+    const lbl = document.getElementById(`vac-count-${id}`);
+    if (lbl) lbl.textContent = `(${cnt})`;
+}
+
+function getEmployeeVacations(empCard) {
+    return [...empCard.querySelectorAll('.vac-row')].map(r => ({
+        startDate: r.querySelector('.vac-start').value,
+        endDate:   r.querySelector('.vac-end').value,
+        note:      r.querySelector('.vac-note').value.trim(),
+    })).filter(v => v.startDate && v.endDate);
 }
 
 function toggleSched(id) {
@@ -332,7 +389,21 @@ function getEmployees() {
         workEnd:      c.querySelector('.ewe').value || '18:00',
         lunchStart:   c.querySelector('.els').value || '13:00',
         lunchEnd:     c.querySelector('.ele').value || '14:00',
+        vacations:    getEmployeeVacations(c),
     })).filter(e => e.name);
+}
+
+// Карта «имя сотрудника → массив отпусков» для отрисовки на SVG.
+function buildVacationMap() {
+    const map = {};
+    [...document.querySelectorAll('#empList .emp-card')].forEach(c => {
+        const name = c.querySelector('.ename').value.trim();
+        if (!name) return;
+        map[name] = getEmployeeVacations(c)
+            .map(v => ({ start: new Date(v.startDate), end: new Date(v.endDate), note: v.note }))
+            .filter(v => !isNaN(v.start) && !isNaN(v.end));
+    });
+    return map;
 }
 
 // ─── Generate ────────────────────────────────────────────────────
@@ -450,12 +521,19 @@ function buildGanttSvg(tasks, cpSet) {
     const PADDING = 10;
     const HEADER  = 30;
     const ROLE_BY_NAME = buildRoleMap();
+    const VAC_BY_NAME  = buildVacationMap();
 
     if (!tasks.length) return '';
 
+    // Расширяем диапазон, чтобы захватить отпуска, попадающие в окно задач
     const dates = tasks.flatMap(t => [new Date(t.scheduledStart), new Date(t.scheduledEnd)]);
-    const minDate = new Date(Math.min(...dates));
-    const maxDate = new Date(Math.max(...dates));
+    let minDate = new Date(Math.min(...dates));
+    let maxDate = new Date(Math.max(...dates));
+    Object.values(VAC_BY_NAME).flat().forEach(v => {
+        if (v.end < minDate || v.start > maxDate) return; // отпуск вне видимого окна — не растягиваем
+        if (v.start < minDate) minDate = new Date(v.start);
+        if (v.end > maxDate) maxDate = new Date(v.end);
+    });
     const totalMs  = maxDate - minDate;
 
     const CHART_W = Math.max(600, tasks.length * 30);
@@ -497,6 +575,22 @@ function buildGanttSvg(tasks, cpSet) {
 
         // Row bg
         lines.push(`<rect x="0" y="${y}" width="${LABEL_W + CHART_W}" height="${ROW_H}" fill="${i%2===0?'#fafbfc':'#fff'}"/>`);
+
+        // Vacation overlays for this task's assignee — отрисовываются под баром задачи
+        const vacs = VAC_BY_NAME[t.assignedResource] || [];
+        vacs.forEach(v => {
+            if (v.end < minDate || v.start > maxDate) return;
+            const vs = v.start < minDate ? minDate : v.start;
+            // Конец отпуска включительный — растягиваем до конца этого дня
+            const veInclusive = new Date(v.end);
+            veInclusive.setHours(23, 59, 59, 999);
+            const ve = veInclusive > maxDate ? maxDate : veInclusive;
+            const vx1 = x(vs);
+            const vx2 = x(ve);
+            const vw  = Math.max(vx2 - vx1, 2);
+            lines.push(`<rect x="${vx1}" y="${y+2}" width="${vw}" height="${ROW_H-4}" fill="#dc3545" opacity="0.18"/>`);
+            lines.push(`<rect x="${vx1}" y="${y+2}" width="${vw}" height="${ROW_H-4}" fill="none" stroke="#dc3545" stroke-width="0.5" stroke-dasharray="3,2" opacity="0.5"><title>🏖️ Отпуск ${vs.toLocaleDateString('ru-RU')} — ${v.end.toLocaleDateString('ru-RU')}${v.note?': '+v.note:''}</title></rect>`);
+        });
 
         // Task key label
         lines.push(`<text x="${LABEL_W - 4}" y="${y + ROW_H/2 + 4}" font-size="10" fill="#374151" text-anchor="end" font-weight="${isCp?'bold':'normal'}">${t.key}</text>`);

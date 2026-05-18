@@ -48,6 +48,16 @@
         background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
         color: white;
     }
+
+    .vacation-card {
+        background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+        color: #5a3a00;
+    }
+
+        .vacation-card .btn-light {
+            color: #5a3a00;
+            font-weight: 600;
+        }
 </style>
 
 <div class="portal-header text-center">
@@ -103,6 +113,22 @@
                         </p>
                         <div class="mt-3">
                             <span class="btn btn-light">Очистить задачи →</span>
+                        </div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-4 mb-4">
+            <a href="@Url.Action("Index", "Gant")" class="text-decoration-none">
+                <div class="card portal-card vacation-card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="card-icon">🏖️</div>
+                        <h3 class="card-title">Диаграмма Ганта с отпусками</h3>
+                        <p class="card-text">
+                            Автоматическое расписание JIRA-задач с учётом графика отпусков сотрудников: планировщик пропускает дни отпуска при назначении задач
+                        </p>
+                        <div class="mt-3">
+                            <span class="btn btn-light">Открыть планирование →</span>
                         </div>
                     </div>
                 </div>
