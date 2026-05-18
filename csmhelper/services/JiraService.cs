@@ -97,7 +97,9 @@ namespace csmhelper.services
                 // Создаем задачи через JIRA REST API
                 var createdIssues = new List<CreatedIssue>();
 
-                // Создаем задачи в зависимости от выбранных чекбоксов
+                // Создаем задачи в зависимости от выбранных чекбоксов.
+                // Порядок: Аналитика → Backend → Frontend AM → Frontend AO → Тестирование.
+                // Каждая последующая блокирует следующую.
                 if (model.CreateAnalysis)
                 {
                     var analysisIssue = await CreateIssueAsync(model, "ANALYSIS", " - Аналитика",
@@ -105,11 +107,25 @@ namespace csmhelper.services
                     if (analysisIssue != null) createdIssues.Add(analysisIssue);
                 }
 
-                if (model.CreateDev)
+                if (model.CreateDevBackend)
                 {
-                    var devIssue = await CreateIssueAsync(model, "DEV", " - Разработка",
-                        "\n\nТип: Задача на разработку\nТребуется реализовать функционал согласно ТЗ.");
-                    if (devIssue != null) createdIssues.Add(devIssue);
+                    var issue = await CreateIssueAsync(model, "DEV BACK", " - Разработка (Backend)",
+                        "\n\nТип: Задача на разработку (Backend)\nТребуется реализовать серверную часть согласно ТЗ.");
+                    if (issue != null) createdIssues.Add(issue);
+                }
+
+                if (model.CreateDevFrontAM)
+                {
+                    var issue = await CreateIssueAsync(model, "DEV FRONT AM", " - Разработка (Frontend AM)",
+                        "\n\nТип: Задача на разработку (Frontend AM)\nТребуется реализовать клиентскую часть AM согласно ТЗ.");
+                    if (issue != null) createdIssues.Add(issue);
+                }
+
+                if (model.CreateDevFrontAO)
+                {
+                    var issue = await CreateIssueAsync(model, "DEV FRONT AO", " - Разработка (Frontend AO)",
+                        "\n\nТип: Задача на разработку (Frontend AO)\nТребуется реализовать клиентскую часть AO согласно ТЗ.");
+                    if (issue != null) createdIssues.Add(issue);
                 }
 
                 if (model.CreateTest)
@@ -152,14 +168,23 @@ namespace csmhelper.services
 
         private async Task<CreatedIssue> CreateIssueAsync(TaskCreationModel model, string prefix, string suffix, string descriptionSuffix)
         {
+            // Двухшаговое создание задачи:
+            // 1) POST /rest/api/2/issue — только базовые поля (без Epic Link),
+            //    чтобы не получить 400 на проектах, где customfield_10008 нет на экране Create.
+            // 2) Если задан EpicKey — PUT /rest/api/2/issue/{key} с customfield_10008 = ключ эпика.
+            //    Если PUT провалится, задача уже создана; ошибка логируется, но создание не валим.
+
+            var summary = $"[{prefix}] {model.Summary}{suffix}";
+            var description = model.Description + descriptionSuffix;
+
             var issueData = new
             {
                 fields = new
                 {
                     project = new { key = model.ProjectKey },
-                    summary = $"{prefix}: {model.Summary}{suffix}",
-                    description = model.Description + descriptionSuffix,
-                    issuetype = new { name = "Task" } // Убедитесь, что здесь используется name, а не объект
+                    summary = summary,
+                    description = description,
+                    issuetype = new { name = "Task" }
                 }
             };
 
@@ -168,16 +193,122 @@ namespace csmhelper.services
 
             var response = await _httpClient.PostAsync("/rest/api/2/issue", content);
 
-            if (response.IsSuccessStatusCode)
+            if (!response.IsSuccessStatusCode)
             {
-                var responseContent = await response.Content.ReadAsStringAsync();
-                var createdIssue = JsonConvert.DeserializeObject<CreatedIssue>(responseContent);
-                createdIssue.Fields.IssueType = new IssueType { Name = prefix };
-
-                return createdIssue;
+                var errBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"[CreateIssue] {prefix} failed: {response.StatusCode} — {errBody}");
+                throw new Exception($"JIRA {response.StatusCode} при создании задачи [{prefix}]: {Truncate(errBody, 400)}");
             }
 
-            return null;
+            var responseContent = await response.Content.ReadAsStringAsync();
+            var createdIssue = JsonConvert.DeserializeObject<CreatedIssue>(responseContent);
+            if (createdIssue == null)
+                throw new Exception($"Не удалось распарсить ответ JIRA при создании [{prefix}]: {Truncate(responseContent, 200)}");
+
+            // Защита от ситуации, когда десериализатор не создал Fields
+            createdIssue.Fields ??= new IssueFields();
+            createdIssue.Fields.Summary   = summary;
+            createdIssue.Fields.IssueType = new IssueType { Name = prefix };
+
+            // Привязка к эпику отдельным запросом
+            if (!string.IsNullOrWhiteSpace(model.EpicKey))
+            {
+                var ok = await TrySetEpicLinkAsync(createdIssue.Key, model.EpicKey.Trim());
+                if (!ok)
+                    Console.WriteLine($"[CreateIssue] Эпик не привязан к {createdIssue.Key}");
+            }
+
+            return createdIssue;
+        }
+
+        private async Task<bool> TrySetEpicLinkAsync(string issueKey, string epicKey)
+        {
+            try
+            {
+                var payload = new
+                {
+                    fields = new Dictionary<string, object>
+                    {
+                        ["customfield_10008"] = epicKey
+                    }
+                };
+                var json = JsonConvert.SerializeObject(payload);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = await _httpClient.PutAsync($"/rest/api/2/issue/{issueKey}", content);
+
+                if (response.IsSuccessStatusCode) return true;
+
+                var body = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"[SetEpicLink] {issueKey} → {epicKey} failed: {response.StatusCode} — {Truncate(body, 400)}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SetEpicLink] {issueKey} → {epicKey} exception: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static string Truncate(string s, int max) =>
+            string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s.Substring(0, max) + "…");
+
+        // ─── Эпики проекта (для UI выбора при создании задач) ────────────
+
+        public async Task<JiraEpicsResponse> GetEpicsByProjectAsync(string projectKey)
+        {
+            if (string.IsNullOrWhiteSpace(projectKey))
+                return new JiraEpicsResponse { Success = false, Error = "Не указан ключ проекта" };
+
+            if (!await IsAuthenticatedAsync())
+                return new JiraEpicsResponse { Success = false, Error = "Требуется аутентификация" };
+
+            try
+            {
+                var context = _httpContextAccessor.HttpContext;
+                var username = context.Session.GetString("JiraUsername");
+                var password = context.Session.GetString("JiraPassword");
+
+                var authString = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+                _httpClient.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authString);
+
+                var jql = $"project = \"{projectKey.Trim()}\" AND issuetype = Epic AND status not in (\"Closed\", \"Done\", \"Resolved\")";
+                // customfield_10009 — Epic Name в этой инсталляции (см. IssueFields.EpicName).
+                var fields = "key,summary,status,customfield_10009";
+                var response = await _httpClient.GetAsync(
+                    $"/rest/api/2/search?jql={Uri.EscapeDataString(jql)}&fields={fields}&maxResults=500");
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync();
+                    return new JiraEpicsResponse
+                    {
+                        Success = false,
+                        Error = $"Jira API вернул {response.StatusCode}: {body.Substring(0, Math.Min(200, body.Length))}"
+                    };
+                }
+
+                var contentStr = await response.Content.ReadAsStringAsync();
+                var searchResult = JsonConvert.DeserializeObject<JiraSearchResult>(contentStr) ?? new JiraSearchResult();
+
+                var epics = (searchResult.Issues ?? new List<JiraIssue>())
+                    .Select(i => new JiraEpic
+                    {
+                        Key = i.Key ?? "",
+                        Summary = i.Fields?.Summary ?? "",
+                        EpicName = i.Fields?.EpicName ?? "",
+                        Status = i.Fields?.Status?.Name ?? ""
+                    })
+                    .Where(e => !string.IsNullOrEmpty(e.Key))
+                    .OrderBy(e => e.Key)
+                    .ToList();
+
+                return new JiraEpicsResponse { Success = true, Epics = epics };
+            }
+            catch (Exception ex)
+            {
+                return new JiraEpicsResponse { Success = false, Error = $"Ошибка получения эпиков: {ex.Message}" };
+            }
         }
 
         private async Task<bool> CreateIssueLinkAsync(string inwardIssue, string outwardIssue, string linkType)
