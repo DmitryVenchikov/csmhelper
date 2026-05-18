@@ -124,6 +124,84 @@ namespace csmhelper.services
             };
         }
 
+        // ─── Epics list (для UI-фильтра) ──────────────────────────
+
+        public async Task<GantEpicsResponse> GetEpicsAsync(GantEpicsRequest request)
+        {
+            var ctx = _httpContextAccessor.HttpContext!;
+            var username = ctx.Session.GetString("JiraUsername");
+            var password = ctx.Session.GetString("JiraPassword");
+
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+                return new GantEpicsResponse { Success = false, Error = "Сессия Jira истекла. Пожалуйста, войдите заново." };
+
+            var projects = (request.Projects ?? new List<string>())
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(p => p.Trim())
+                .ToList();
+            if (!projects.Any())
+                return new GantEpicsResponse { Success = false, Error = "Укажите хотя бы один проект." };
+
+            try
+            {
+                var handler = new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback = (_, _, _, _) => true
+                };
+
+                using var client = new HttpClient(handler);
+                client.BaseAddress = new Uri(request.JiraServer);
+                var auth = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+                client.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", auth);
+                client.Timeout = TimeSpan.FromSeconds(60);
+
+                var projectsStr = string.Join(", ", projects.Select(p => $"\"{p}\""));
+                var jql = $"project in ({projectsStr}) AND issuetype = Epic AND status not in (\"Closed\", \"Done\", \"Resolved\")";
+                // customfield_10005 — поле "Epic Name" в Jira Server
+                var fields = "key,summary,status,customfield_10005";
+                var url = $"/rest/api/2/search?jql={Uri.EscapeDataString(jql)}&fields={fields}&maxResults=500";
+
+                _logger.LogInformation($"Эпики JQL: {jql}");
+
+                var response = await client.GetAsync(url);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync();
+                    _logger.LogError($"Jira API вернул {response.StatusCode}: {body}");
+                    return new GantEpicsResponse
+                    {
+                        Success = false,
+                        Error = $"Jira API вернул {response.StatusCode}: {body[..Math.Min(200, body.Length)]}"
+                    };
+                }
+
+                var json = await response.Content.ReadAsStringAsync();
+                var result = JsonConvert.DeserializeObject<JiraSearchResult>(json)
+                             ?? new JiraSearchResult();
+
+                var epics = (result.Issues ?? new List<JiraIssue>())
+                    .Select(i => new GantEpic
+                    {
+                        Key = i.Key ?? "",
+                        Summary = i.Fields?.Summary ?? "",
+                        EpicName = i.Fields?.CustomField10005 as string ?? "",
+                        Status = i.Fields?.Status?.Name ?? "",
+                    })
+                    .Where(e => !string.IsNullOrEmpty(e.Key))
+                    .OrderBy(e => e.Key)
+                    .ToList();
+
+                _logger.LogInformation($"Найдено эпиков: {epics.Count}");
+                return new GantEpicsResponse { Success = true, Epics = epics };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка получения эпиков");
+                return new GantEpicsResponse { Success = false, Error = $"Ошибка получения эпиков: {ex.Message}" };
+            }
+        }
+
         // ─── Jira REST ────────────────────────────────────────────
 
         private async Task<List<RawJiraTask>> FetchJiraTasksAsync(
@@ -402,6 +480,10 @@ namespace csmhelper.services
 
             [JsonProperty("customfield_10372")]
             public object? CustomField10372 { get; set; }
+
+            // Epic Name (Jira Server) — используется при показе списка эпиков
+            [JsonProperty("customfield_10005")]
+            public object? CustomField10005 { get; set; }
 
             [JsonProperty("status")]
             public JiraNamedObject? Status { get; set; }
