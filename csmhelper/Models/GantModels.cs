@@ -14,10 +14,42 @@ namespace csmhelper.Models
 
         public bool VerifySsl { get; set; } = false;
 
+        /// <summary>
+        /// Если задано — расписание строится только по задачам, прикреплённым к этим эпикам
+        /// (через JQL "Epic Link" in (...)). Если пусто — берутся все задачи проекта.
+        /// </summary>
+        public List<string> EpicKeys { get; set; } = new();
+
         [Required]
         public List<GantEmployeeInput> Employees { get; set; } = new();
 
         public GantScheduleSettings Schedule { get; set; } = new();
+    }
+
+    // ─── Epics ────────────────────────────────────────────────────
+
+    public class GantEpicsRequest
+    {
+        [Required]
+        public string JiraServer { get; set; } = "https://jira.moscow.alfaintra.net";
+
+        [Required]
+        public List<string> Projects { get; set; } = new();
+    }
+
+    public class GantEpic
+    {
+        public string Key { get; set; } = "";
+        public string Summary { get; set; } = "";
+        public string EpicName { get; set; } = "";
+        public string Status { get; set; } = "";
+    }
+
+    public class GantEpicsResponse
+    {
+        public bool Success { get; set; }
+        public string? Error { get; set; }
+        public List<GantEpic> Epics { get; set; } = new();
     }
 
     public class GantEmployeeInput

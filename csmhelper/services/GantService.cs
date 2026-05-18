@@ -71,10 +71,11 @@ namespace csmhelper.services
             List<RawJiraTask> rawTasks;
             try
             {
-                _logger.LogInformation($"Запрос к Jira: server={request.JiraServer}, projects={string.Join(",", request.Projects)}");
+                _logger.LogInformation($"Запрос к Jira: server={request.JiraServer}, projects={string.Join(",", request.Projects)}, epics={string.Join(",", request.EpicKeys ?? new())}");
                 rawTasks = await FetchJiraTasksAsync(
                     request.JiraServer, username, password,
-                    request.Projects, request.VerifySsl, request.Schedule);
+                    request.Projects, request.VerifySsl, request.Schedule,
+                    request.EpicKeys ?? new List<string>());
             }
             catch (Exception ex)
             {
@@ -127,7 +128,8 @@ namespace csmhelper.services
 
         private async Task<List<RawJiraTask>> FetchJiraTasksAsync(
     string server, string username, string password,
-    List<string> projects, bool verifySsl, GantScheduleSettings settings)
+    List<string> projects, bool verifySsl, GantScheduleSettings settings,
+    List<string> epicKeys)
         {
             var handler = new HttpClientHandler
             {
@@ -145,6 +147,18 @@ namespace csmhelper.services
 
             var projectsStr = string.Join(", ", projects.Select(p => $"\"{p}\""));
             var jql = $"project in ({projectsStr}) AND status not in (\"Closed\", \"Done\", \"Resolved\")";
+
+            // Фильтр по эпикам — берём только задачи, прикреплённые к выбранным эпикам.
+            // В Jira Server поле зовётся "Epic Link"; в JQL так и пишется в кавычках.
+            if (epicKeys != null && epicKeys.Count > 0)
+            {
+                var sanitized = epicKeys
+                    .Where(k => !string.IsNullOrWhiteSpace(k))
+                    .Select(k => $"\"{k.Trim()}\"");
+                var epicListStr = string.Join(", ", sanitized);
+                if (!string.IsNullOrEmpty(epicListStr))
+                    jql += $" AND \"Epic Link\" in ({epicListStr})";
+            }
 
             var fields = "key,summary,status,priority,created,duedate,assignee," +
                          "issuelinks,customfield_10007,customfield_10372";
