@@ -102,6 +102,28 @@
     .vac-row .vac-rm:hover { color:#dc3545; }
     .vac-add { font-size: .78rem; color: #b91c1c; cursor: pointer; display: inline-block; margin-top: .25rem; }
     .vac-add:hover { text-decoration: underline; }
+
+    /* Epics list */
+    .epic-row {
+        display: flex; align-items: center; gap: .5rem;
+        padding: .3rem .5rem; border-bottom: 1px solid #f0f0f0;
+        font-size: .82rem; cursor: pointer;
+    }
+    .epic-row:last-child { border-bottom: none; }
+    .epic-row:hover { background: #f7faff; }
+    .epic-row input[type=checkbox] { margin: 0; }
+    .epic-row .epic-key {
+        font-family: 'Consolas', monospace; font-weight: 600;
+        color: var(--primary-dark); flex-shrink: 0; min-width: 88px;
+    }
+    .epic-row .epic-title {
+        flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        color: #374151;
+    }
+    .epic-row .epic-status {
+        font-size: .7rem; padding: .1em .4em; border-radius: 3px;
+        background: #eef2f7; color: #6c757d; flex-shrink: 0;
+    }
 </style>
 }
 
@@ -145,13 +167,37 @@
                     <input id="jiraProjects" type="text" class="form-control form-control-sm"
                            value="DKANBAN" placeholder="PROJ1, PROJ2" />
                 </div>
-                <div class="form-check form-switch mt-1">
-                    <input class="form-check-input" type="checkbox" id="verifySsl" />
-                    <label class="form-check-label small" for="verifySsl">Проверять SSL-сертификат</label>
-                </div>
                 <div class="mt-2 p-2 rounded" style="background:#fff8e1;font-size:.77rem;color:#6d4c00;">
                     ℹ️ Для авторизации используются данные текущей сессии Jira
                 </div>
+            </div>
+        </div>
+
+        <!-- Epics filter -->
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>🎯 Эпики (фильтр)</span>
+                <button class="btn btn-sm btn-outline-primary py-0 px-2" type="button" onclick="loadEpics()">
+                    🔄 Загрузить
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="epicsHint" class="text-muted small">
+                    Нажмите «Загрузить», чтобы получить список эпиков из указанных проектов.
+                    Если выбраны эпики — диаграмма будет построена только по их задачам.
+                </div>
+                <div id="epicsToolbar" class="justify-content-between align-items-center mb-1" style="display:none;gap:.5rem">
+                    <input id="epicsSearch" type="text" class="form-control form-control-sm" style="max-width:60%"
+                           placeholder="Поиск по ключу/названию…" oninput="filterEpics()" />
+                    <div class="small">
+                        <a href="#" class="text-primary me-2" onclick="selectAllEpics(true);return false;">все</a>
+                        <a href="#" class="text-secondary" onclick="selectAllEpics(false);return false;">сбросить</a>
+                    </div>
+                </div>
+                <div id="epicsList" class="d-flex flex-column"
+                     style="max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;display:none">
+                </div>
+                <div id="epicsSelectedInfo" class="small text-muted mt-1" style="display:none"></div>
             </div>
         </div>
 
@@ -419,7 +465,8 @@ async function generate() {
     const payload = {
         jiraServer: document.getElementById('jiraServer').value.trim(),
         projects,
-        verifySsl: document.getElementById('verifySsl').checked,
+        verifySsl: false,
+        epicKeys: getSelectedEpics(),
         employees,
         schedule: {
             spBase:                   +document.getElementById('spBase').value || 21,
@@ -677,5 +724,148 @@ function showAlert(msg) {
     document.getElementById('alertBox').scrollIntoView({ behavior: 'smooth' });
 }
 function hideAlert() { document.getElementById('alertBox').style.display = 'none'; }
+
+// ─── Epics filter ────────────────────────────────────────────────
+// Все загруженные эпики; объекты вида { key, summary, epicName, status, checked }
+let EPICS = [];
+
+async function loadEpics() {
+    hideAlert();
+    const projects = document.getElementById('jiraProjects').value
+        .split(',').map(p => p.trim()).filter(Boolean);
+    if (!projects.length) { showAlert('Укажите хотя бы один проект, чтобы загрузить эпики.'); return; }
+
+    const hint = document.getElementById('epicsHint');
+    hint.textContent = 'Загружаю эпики…';
+    hint.style.display = '';
+
+    try {
+        const res = await fetch('/Gant/Epics', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jiraServer: document.getElementById('jiraServer').value.trim(),
+                projects
+            }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!data.success) { showAlert(data.error || 'Не удалось получить эпики'); hint.textContent = 'Ошибка загрузки.'; return; }
+        EPICS = (data.epics || []).map(e => ({ ...e, checked: false }));
+        renderEpics();
+    } catch (e) {
+        showAlert('Ошибка загрузки эпиков: ' + e.message);
+        hint.textContent = 'Ошибка загрузки.';
+    }
+}
+
+function renderEpics() {
+    const list    = document.getElementById('epicsList');
+    const hint    = document.getElementById('epicsHint');
+    const toolbar = document.getElementById('epicsToolbar');
+
+    if (!EPICS.length) {
+        list.style.display = 'none';
+        toolbar.style.display = 'none';
+        hint.style.display = '';
+        hint.textContent = 'Эпики не найдены в выбранных проектах.';
+        updateEpicsSelectedInfo();
+        return;
+    }
+
+    hint.style.display = 'none';
+    toolbar.style.display = 'flex';
+    list.style.display = '';
+
+    const q = (document.getElementById('epicsSearch').value || '').toLowerCase().trim();
+    const filtered = q
+        ? EPICS.filter(e =>
+            (e.key || '').toLowerCase().includes(q) ||
+            (e.summary || '').toLowerCase().includes(q) ||
+            (e.epicName || '').toLowerCase().includes(q))
+        : EPICS;
+
+    list.innerHTML = filtered.map(e => {
+        const title = escapeHtml(e.epicName || e.summary || '');
+        const summary = e.epicName && e.summary && e.epicName !== e.summary
+            ? ` <span class="text-muted" style="font-size:.75rem">— ${escapeHtml(e.summary)}</span>`
+            : '';
+        return `
+        <label class="epic-row">
+            <input type="checkbox" data-epic-key="${escapeHtml(e.key)}" ${e.checked ? 'checked' : ''}
+                   onchange="onEpicToggle(this)">
+            <span class="epic-key">${escapeHtml(e.key)}</span>
+            <span class="epic-title">${title}${summary}</span>
+            ${e.status ? `<span class="epic-status">${escapeHtml(e.status)}</span>` : ''}
+        </label>`;
+    }).join('');
+
+    updateEpicsSelectedInfo();
+}
+
+function onEpicToggle(input) {
+    const key = input.getAttribute('data-epic-key');
+    const epic = EPICS.find(x => x.key === key);
+    if (epic) epic.checked = input.checked;
+    updateEpicsSelectedInfo();
+}
+
+function selectAllEpics(checked) {
+    // Применяем только к видимым (отфильтрованным) эпикам
+    const q = (document.getElementById('epicsSearch').value || '').toLowerCase().trim();
+    EPICS.forEach(e => {
+        if (!q ||
+            (e.key || '').toLowerCase().includes(q) ||
+            (e.summary || '').toLowerCase().includes(q) ||
+            (e.epicName || '').toLowerCase().includes(q)) {
+            e.checked = checked;
+        }
+    });
+    renderEpics();
+}
+
+function filterEpics() {
+    renderEpics();
+}
+
+function getSelectedEpics() {
+    return EPICS.filter(e => e.checked).map(e => e.key);
+}
+
+function updateEpicsSelectedInfo() {
+    const sel = getSelectedEpics();
+    const el  = document.getElementById('epicsSelectedInfo');
+    if (!EPICS.length) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    if (!sel.length) {
+        el.innerHTML = '<span class="text-muted">Эпики не выбраны — диаграмма будет построена по всем задачам проектов.</span>';
+    } else {
+        el.innerHTML = `<span class="fw-semibold text-primary">Выбрано эпиков: ${sel.length}</span>` +
+                       ` <span class="text-muted">— расписание ограничится их задачами</span>`;
+    }
+}
+
+function escapeHtml(s) {
+    return String(s ?? '')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// При изменении списка проектов сбрасываем уже подгруженные эпики, чтобы не было рассинхрона.
+document.addEventListener('DOMContentLoaded', () => {
+    const projInput = document.getElementById('jiraProjects');
+    if (projInput) projInput.addEventListener('input', () => {
+        if (EPICS.length) {
+            EPICS = [];
+            document.getElementById('epicsList').innerHTML = '';
+            document.getElementById('epicsList').style.display = 'none';
+            document.getElementById('epicsToolbar').style.display = 'none';
+            const hint = document.getElementById('epicsHint');
+            hint.style.display = '';
+            hint.textContent = 'Список проектов изменился — нажмите «Загрузить», чтобы обновить эпики.';
+            updateEpicsSelectedInfo();
+        }
+    });
+});
 </script>
 }

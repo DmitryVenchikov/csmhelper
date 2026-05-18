@@ -29,6 +29,27 @@ namespace csmhelper.Controllers
             return View();
         }
 
+        [HttpPost("Epics")]
+        public async Task<IActionResult> Epics([FromBody] GantEpicsRequest request)
+        {
+            if (!IsAuthenticated())
+                return Json(new GantEpicsResponse { Success = false, Error = "Требуется авторизация" });
+
+            if (request == null)
+                return Json(new GantEpicsResponse { Success = false, Error = "Некорректные данные запроса" });
+
+            try
+            {
+                var result = await _gantService.GetEpicsAsync(request);
+                return Json(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при загрузке эпиков");
+                return Json(new GantEpicsResponse { Success = false, Error = $"Ошибка: {ex.Message}" });
+            }
+        }
+
         [HttpPost("Generate")]
         public async Task<IActionResult> Generate([FromBody] GantGenerateRequest request)
         {
