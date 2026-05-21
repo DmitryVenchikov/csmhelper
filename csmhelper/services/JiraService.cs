@@ -250,28 +250,85 @@ namespace csmhelper.services
 
         private async Task<bool> TrySetEpicLinkAsync(string issueKey, string epicKey)
         {
+            // Стратегия 1: Agile REST API — POST /rest/agile/1.0/epic/{epicKey}/issue
+            // Надёжнее всего: не зависит от экранов редактирования и прав на customfield.
             try
             {
-                var payload = new
+                var agilePayload = new { issues = new[] { issueKey } };
+                var agileJson = JsonConvert.SerializeObject(agilePayload);
+                var agileContent = new StringContent(agileJson, Encoding.UTF8, "application/json");
+                var agileResponse = await _httpClient.PostAsync($"/rest/agile/1.0/epic/{epicKey}/issue", agileContent);
+
+                if (agileResponse.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[SetEpicLink] Agile API: {issueKey} → {epicKey} OK");
+                    return true;
+                }
+
+                var agileBody = await agileResponse.Content.ReadAsStringAsync();
+                Console.WriteLine($"[SetEpicLink] Agile API failed for {issueKey} → {epicKey}: {agileResponse.StatusCode} — {Truncate(agileBody, 300)}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SetEpicLink] Agile API exception: {ex.Message}");
+            }
+
+            // Стратегия 2 (fallback): update-синтаксис через стандартный REST API
+            // Работает даже если поле не на экране, но требует права на поле.
+            try
+            {
+                var updatePayload = new
+                {
+                    update = new Dictionary<string, object>
+                    {
+                        ["customfield_10008"] = new[] { new { set = epicKey } }
+                    }
+                };
+                var updateJson = JsonConvert.SerializeObject(updatePayload);
+                var updateContent = new StringContent(updateJson, Encoding.UTF8, "application/json");
+                var updateResponse = await _httpClient.PutAsync($"/rest/api/2/issue/{issueKey}", updateContent);
+
+                if (updateResponse.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[SetEpicLink] update-syntax: {issueKey} → {epicKey} OK");
+                    return true;
+                }
+
+                var updateBody = await updateResponse.Content.ReadAsStringAsync();
+                Console.WriteLine($"[SetEpicLink] update-syntax failed for {issueKey} → {epicKey}: {updateResponse.StatusCode} — {Truncate(updateBody, 300)}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SetEpicLink] update-syntax exception: {ex.Message}");
+            }
+
+            // Стратегия 3 (последний вариант): fields-синтаксис (прежняя логика)
+            try
+            {
+                var fieldsPayload = new
                 {
                     fields = new Dictionary<string, object>
                     {
                         ["customfield_10008"] = epicKey
                     }
                 };
-                var json = JsonConvert.SerializeObject(payload);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await _httpClient.PutAsync($"/rest/api/2/issue/{issueKey}", content);
+                var fieldsJson = JsonConvert.SerializeObject(fieldsPayload);
+                var fieldsContent = new StringContent(fieldsJson, Encoding.UTF8, "application/json");
+                var fieldsResponse = await _httpClient.PutAsync($"/rest/api/2/issue/{issueKey}", fieldsContent);
 
-                if (response.IsSuccessStatusCode) return true;
+                if (fieldsResponse.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[SetEpicLink] fields-syntax: {issueKey} → {epicKey} OK");
+                    return true;
+                }
 
-                var body = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"[SetEpicLink] {issueKey} → {epicKey} failed: {response.StatusCode} — {Truncate(body, 400)}");
+                var fieldsBody = await fieldsResponse.Content.ReadAsStringAsync();
+                Console.WriteLine($"[SetEpicLink] fields-syntax failed for {issueKey} → {epicKey}: {fieldsResponse.StatusCode} — {Truncate(fieldsBody, 300)}");
                 return false;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[SetEpicLink] {issueKey} → {epicKey} exception: {ex.Message}");
+                Console.WriteLine($"[SetEpicLink] fields-syntax exception: {ex.Message}");
                 return false;
             }
         }
