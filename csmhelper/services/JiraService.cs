@@ -97,12 +97,17 @@ namespace csmhelper.services
                 // Создаем задачи через JIRA REST API
                 var createdIssues = new List<CreatedIssue>();
 
-                // Создаем задачи в зависимости от выбранных чекбоксов.
-                // Порядок: Аналитика → Backend → Frontend AM → Frontend AO → Тестирование.
-                // Каждая последующая блокирует следующую.
+                // Отдельно отслеживаем задачи по типу для правильной расстановки связей:
+                // Аналитика → блокирует каждую задачу разработки
+                // Задачи разработки (бэк, AM, AO) — параллельны, не блокируют друг друга
+                // Каждая задача разработки → блокирует тест
+                CreatedIssue? analysisIssue = null;
+                var devIssues = new List<CreatedIssue>();
+                CreatedIssue? testIssue = null;
+
                 if (model.CreateAnalysis)
                 {
-                    var analysisIssue = await CreateIssueAsync(model, "ANALYSIS", " - Аналитика",
+                    analysisIssue = await CreateIssueAsync(model, "ANALYSIS", " - Аналитика",
                         "\n\nТип: Аналитическая задача\nТребуется провести анализ требований и составить ТЗ.");
                     if (analysisIssue != null) createdIssues.Add(analysisIssue);
                 }
@@ -111,36 +116,58 @@ namespace csmhelper.services
                 {
                     var issue = await CreateIssueAsync(model, "DEV BACK", " - Разработка (Backend)",
                         "\n\nТип: Задача на разработку (Backend)\nТребуется реализовать серверную часть согласно ТЗ.");
-                    if (issue != null) createdIssues.Add(issue);
+                    if (issue != null) { createdIssues.Add(issue); devIssues.Add(issue); }
                 }
 
                 if (model.CreateDevFrontAM)
                 {
                     var issue = await CreateIssueAsync(model, "DEV FRONT AM", " - Разработка (Frontend AM)",
                         "\n\nТип: Задача на разработку (Frontend AM)\nТребуется реализовать клиентскую часть AM согласно ТЗ.");
-                    if (issue != null) createdIssues.Add(issue);
+                    if (issue != null) { createdIssues.Add(issue); devIssues.Add(issue); }
                 }
 
                 if (model.CreateDevFrontAO)
                 {
                     var issue = await CreateIssueAsync(model, "DEV FRONT AO", " - Разработка (Frontend AO)",
                         "\n\nТип: Задача на разработку (Frontend AO)\nТребуется реализовать клиентскую часть AO согласно ТЗ.");
-                    if (issue != null) createdIssues.Add(issue);
+                    if (issue != null) { createdIssues.Add(issue); devIssues.Add(issue); }
                 }
 
                 if (model.CreateTest)
                 {
-                    var testIssue = await CreateIssueAsync(model, "TEST", " - Тестирование",
+                    testIssue = await CreateIssueAsync(model, "TEST", " - Тестирование",
                         "\n\nТип: Задача на тестирование\nТребуется провести тестирование реализованного функционала.");
                     if (testIssue != null) createdIssues.Add(testIssue);
                 }
 
-                // Создаем блокирующие связи
+                // Расставляем блокирующие связи согласно правилам:
                 var linksCreated = 0;
-                for (int i = 0; i < createdIssues.Count - 1; i++)
+
+                // 1. Аналитика блокирует каждую задачу на разработку
+                if (analysisIssue != null)
                 {
-                    var linkSuccess = await CreateIssueLinkAsync(createdIssues[i].Key, createdIssues[i + 1].Key, "Blocks");
-                    if (linkSuccess) linksCreated++;
+                    foreach (var dev in devIssues)
+                    {
+                        var ok = await CreateIssueLinkAsync(analysisIssue.Key, dev.Key, "Blocks");
+                        if (ok) linksCreated++;
+                    }
+                }
+
+                // 2. Каждая задача на разработку блокирует тест
+                if (testIssue != null)
+                {
+                    foreach (var dev in devIssues)
+                    {
+                        var ok = await CreateIssueLinkAsync(dev.Key, testIssue.Key, "Blocks");
+                        if (ok) linksCreated++;
+                    }
+
+                    // Если задач на разработку нет, но есть аналитика — она блокирует тест напрямую
+                    if (!devIssues.Any() && analysisIssue != null)
+                    {
+                        var ok = await CreateIssueLinkAsync(analysisIssue.Key, testIssue.Key, "Blocks");
+                        if (ok) linksCreated++;
+                    }
                 }
 
                 response.Success = true;
